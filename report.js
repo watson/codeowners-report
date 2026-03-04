@@ -13,6 +13,7 @@ const DEFAULT_OUTPUT_FILE_NAME = 'codeowners-gaps-report.html'
 const DEFAULT_OUTPUT_PATH = path.join(tmpdir(), 'codeowners-report', DEFAULT_OUTPUT_FILE_NAME)
 const UPLOAD_PROVIDER = 'zenbin'
 const ZENBIN_BASE_URL = 'https://zenbin.org'
+const GIT_COMMAND_MAX_BUFFER = 64 * 1024 * 1024
 
 main()
 
@@ -347,6 +348,7 @@ function runGitCommand (args) {
   return execFileSync('git', args, {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
+    maxBuffer: GIT_COMMAND_MAX_BUFFER,
   })
 }
 

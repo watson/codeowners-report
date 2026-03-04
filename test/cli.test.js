@@ -173,6 +173,24 @@ test('--include-untracked adds untracked files to analysis', (t) => {
   assert.ok(withFlagData.unownedFiles.includes('new-untracked-file.txt'))
 })
 
+test('handles large repositories without git stdout buffer overflow', (t) => {
+  const repoDir = createRepo(t)
+  const longSegment = 'x'.repeat(160)
+  const largeFileCount = 6500
+
+  for (let index = 0; index < largeFileCount; index++) {
+    const filePath = path.join(repoDir, 'bulk', `file-${String(index).padStart(5, '0')}-${longSegment}.txt`)
+    mkdirSync(path.dirname(filePath), { recursive: true })
+    writeFileSync(filePath, 'x\n', 'utf8')
+  }
+
+  runGit(repoDir, ['add', 'bulk'])
+
+  const result = runCli(['--output', 'large-repo-report.html'], { cwd: repoDir })
+  assert.equal(result.status, 0, result.stderr)
+  assert.ok(existsSync(path.join(repoDir, 'large-repo-report.html')))
+})
+
 test('--help prints usage without failing', (t) => {
   const tempDir = mkdtempSync(path.join(tmpdir(), 'codeowners-report-help-'))
   t.after(() => {
