@@ -603,7 +603,7 @@ function parseCodeowners (fileContent) {
     rules.push({
       pattern,
       owners,
-      matches: createPatternMatcher(pattern),
+      matches: createPatternMatcher(pattern, { includeDescendants: true }),
     })
   }
 
@@ -654,7 +654,8 @@ function unescapeToken (token) {
  * @param {string} rawPattern
  * @returns {(scopePath: string, repoPath: string) => boolean}
  */
-function createPatternMatcher (rawPattern) {
+function createPatternMatcher (rawPattern, options = {}) {
+  const includeDescendants = Boolean(options.includeDescendants)
   const directoryOnly = rawPattern.endsWith('/')
   const anchored = rawPattern.startsWith('/')
   const pattern = rawPattern.replace(/^\/+/, '').replace(/\/+$/, '')
@@ -663,12 +664,13 @@ function createPatternMatcher (rawPattern) {
   }
 
   const patternSource = globToRegexSource(pattern)
+  const descendantSuffix = (directoryOnly || includeDescendants) ? '(?:/.*)?' : ''
   if (anchored) {
-    const anchoredRegex = new RegExp('^' + patternSource + (directoryOnly ? '(?:/.*)?' : '') + '$')
+    const anchoredRegex = new RegExp('^' + patternSource + descendantSuffix + '$')
     return (scopePath) => anchoredRegex.test(scopePath)
   }
 
-  const unanchoredRegex = new RegExp('(?:^|/)' + patternSource + (directoryOnly ? '(?:/.*)?' : '') + '$')
+  const unanchoredRegex = new RegExp('(?:^|/)' + patternSource + descendantSuffix + '$')
   return (scopePath, repoPath) => unanchoredRegex.test(scopePath) || unanchoredRegex.test(repoPath)
 }
 

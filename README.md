@@ -138,6 +138,7 @@ The report follows practical `CODEOWNERS` resolution behavior:
 - A file is considered **owned** if at least one owner is resolved.
 - Within a single `CODEOWNERS` file, the **last matching rule wins**.
 - If multiple `CODEOWNERS` files exist, they are applied from broader scope to narrower scope (nested files can override broader files).
+- Directory rules match descendant files whether they are written as `/path/to/dir` or `/path/to/dir/`.
 - `CODEOWNERS` negation patterns (`!pattern`) are ignored.
 
 ## Requirements

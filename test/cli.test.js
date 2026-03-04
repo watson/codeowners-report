@@ -222,6 +222,20 @@ test('--check glob filters files before ownership validation', (t) => {
   assert.match(failingResult.stderr, /src\/unowned\.js/)
 })
 
+test('directory CODEOWNERS pattern without trailing slash owns descendants', (t) => {
+  const repoDir = createRepo(t, {
+    codeowners: '/integration-tests/profiler @team\n',
+    trackedFiles: {
+      'integration-tests/profiler/profiler.spec.js': 'module.exports = true\n',
+    },
+  })
+
+  const result = runCli(['--check', 'integration-tests/profiler/profiler.spec.js'], { cwd: repoDir })
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /CODEOWNERS check passed/)
+})
+
 test('top-level .github/CODEOWNERS applies rules repository-wide', (t) => {
   const repoDir = createRepo(t, {
     codeowners: '/does-not-match-anything @fallback\n',
