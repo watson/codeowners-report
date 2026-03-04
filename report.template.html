@@ -1,0 +1,785 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CODEOWNERS Gap Report</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #141b34;
+      --panel-2: #1b2448;
+      --text: #e4e7f2;
+      --muted: #96a0c6;
+      --good: #2dd4bf;
+      --bad: #fb7185;
+      --accent: #8b5cf6;
+      --border: #2a3568;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 28px;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      background: radial-gradient(circle at top right, #1a2142 0%, var(--bg) 55%);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    h1, h2, h3 { margin: 0; }
+    p { margin: 0; color: var(--muted); }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: grid;
+      gap: 18px;
+    }
+
+    .panel {
+      background: linear-gradient(180deg, var(--panel) 0%, var(--panel-2) 100%);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+      box-shadow: 0 14px 30px rgba(0, 0, 0, 0.35);
+    }
+
+    .header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .summary-grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      margin-top: 12px;
+    }
+
+    .metric {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      border-radius: 12px;
+      padding: 12px;
+    }
+
+    .metric .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
+    .metric .value { font-size: 28px; font-weight: 700; margin-top: 3px; }
+    .metric .value.bad { color: var(--bad); }
+    .metric .value.good { color: var(--good); }
+
+    .coverage-track {
+      margin-top: 12px;
+      width: 100%;
+      height: 14px;
+      background: #0b1127;
+      border-radius: 999px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+    }
+
+    .coverage-owned { background: linear-gradient(90deg, #14b8a6, #2dd4bf); height: 100%; }
+    .coverage-unowned { background: linear-gradient(90deg, #f43f5e, #fb7185); height: 100%; }
+
+    .row-list { display: grid; gap: 10px; margin-top: 12px; }
+    .row {
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .row.selected {
+      border-color: rgba(139, 92, 246, 0.85);
+      box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.35) inset;
+    }
+    .row-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+    .path { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+    .path-button {
+      background: transparent;
+      border: 0;
+      color: var(--text);
+      font: inherit;
+      padding: 0;
+      text-align: left;
+      cursor: pointer;
+      text-decoration: underline;
+      text-decoration-color: rgba(139, 92, 246, 0.55);
+      text-decoration-thickness: 1px;
+      text-underline-offset: 2px;
+    }
+    .path-button:hover { color: #c4b5fd; }
+    .path-button[disabled] {
+      cursor: default;
+      opacity: 0.75;
+      color: var(--muted);
+      text-decoration: none;
+    }
+    .path-button[disabled]:hover {
+      color: var(--muted);
+    }
+    .path-button[disabled]::after {
+      content: ' (leaf)';
+      font-size: 11px;
+      opacity: 0.9;
+    }
+    .pill {
+      font-size: 12px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: var(--muted);
+    }
+    .breadcrumbs {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      color: var(--muted);
+      font-size: 13px;
+      min-height: 28px;
+      flex-wrap: wrap;
+    }
+    .breadcrumbs .sep { opacity: 0.6; }
+    .ghost-button {
+      background: #0e1530;
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 6px 10px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .ghost-button[disabled] {
+      opacity: 0.5;
+      cursor: default;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .controls input[type="text"] {
+      min-width: 280px;
+      flex: 1;
+      background: #0e1530;
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 8px 10px;
+      outline: none;
+    }
+    .controls label { color: var(--muted); display: flex; gap: 8px; align-items: center; font-size: 14px; }
+    .suggestion-muted { color: var(--muted); }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    thead th {
+      text-align: left;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+      padding: 8px;
+      white-space: nowrap;
+      cursor: pointer;
+      user-select: none;
+    }
+    tbody td {
+      padding: 8px;
+      border-bottom: 1px dashed rgba(255, 255, 255, 0.08);
+      vertical-align: top;
+    }
+    .dir-bar {
+      width: 100%;
+      min-width: 180px;
+      height: 10px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: #0b1127;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+    }
+    .dir-bar .owned { background: rgba(45, 212, 191, 0.85); }
+    .dir-bar .unowned { background: rgba(251, 113, 133, 0.9); }
+
+    .muted { color: var(--muted); }
+    .file-list {
+      max-height: 380px;
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: rgba(0, 0, 0, 0.2);
+      padding: 10px;
+      line-height: 1.5;
+      font-size: 12px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      white-space: pre;
+    }
+
+    @media (max-width: 900px) {
+      body { padding: 14px; }
+      .header { align-items: flex-start; }
+      .controls input[type="text"] { min-width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <section class="panel">
+      <div class="header">
+        <div>
+          <h1>CODEOWNERS Gap Report</h1>
+          <p id="subtitle"></p>
+        </div>
+        <div class="pill" id="generatedAt"></div>
+      </div>
+      <div class="summary-grid">
+        <div class="metric"><div class="label">Files Scanned</div><div class="value" id="metric-files">0</div></div>
+        <div class="metric"><div class="label">Owned</div><div class="value good" id="metric-owned">0</div></div>
+        <div class="metric"><div class="label">Unowned</div><div class="value bad" id="metric-unowned">0</div></div>
+        <div class="metric"><div class="label">Coverage</div><div class="value" id="metric-coverage">0%</div></div>
+      </div>
+      <div class="coverage-track" aria-label="Coverage">
+        <div class="coverage-owned" id="coverage-owned"></div>
+        <div class="coverage-unowned" id="coverage-unowned"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="header">
+        <h2>Top-Level Hotspots</h2>
+        <p class="muted" id="top-level-subtitle">Scope: (root) — direct subdirectories with missing coverage</p>
+      </div>
+      <div class="row-list" id="top-level-list"></div>
+    </section>
+
+    <section class="panel">
+      <div class="header">
+        <h2>Directory Explorer</h2>
+        <p class="muted">Filter and sort to find ownership gaps quickly</p>
+      </div>
+      <div class="controls">
+        <div class="breadcrumbs" id="dir-breadcrumbs"></div>
+        <button class="ghost-button" id="dir-up" type="button">Up</button>
+        <button class="ghost-button" id="dir-reset" type="button">Root</button>
+      </div>
+      <div class="controls">
+        <input id="dir-filter" type="text" placeholder="Filter directories (e.g. packages/dd-trace)" />
+        <label><input id="dir-only-gaps" type="checkbox" checked /> only show directories with unowned files</label>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th data-sort="path">Directory</th>
+            <th data-sort="unowned">Unowned</th>
+            <th data-sort="total">Total</th>
+            <th data-sort="coverage">Coverage</th>
+            <th>Suggested Team</th>
+            <th>Owned vs Unowned</th>
+          </tr>
+        </thead>
+        <tbody id="directory-table-body"></tbody>
+      </table>
+      <p class="muted" id="directory-count"></p>
+    </section>
+
+    <section class="panel">
+      <div class="header">
+        <h2>Unowned Files</h2>
+        <p class="muted">Files with no matching owner rule</p>
+      </div>
+      <div class="controls">
+        <input id="file-filter" type="text" placeholder="Filter unowned files..." />
+      </div>
+      <div class="file-list" id="unowned-file-list"></div>
+      <p class="muted" id="file-count"></p>
+    </section>
+
+    <section class="panel">
+      <div class="header">
+        <h2>Detected CODEOWNERS Files</h2>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Path</th>
+            <th>Scope Base</th>
+            <th>Rules</th>
+          </tr>
+        </thead>
+        <tbody id="codeowners-table-body"></tbody>
+      </table>
+    </section>
+  </div>
+
+  <script type="application/json" id="report-data">__REPORT_DATA_JSON__</script>
+  <script>
+    (function () {
+      const report = JSON.parse(document.getElementById('report-data').textContent)
+
+      const fmt = new Intl.NumberFormat('en-US')
+      const percent = value => Number(value).toFixed(1) + '%'
+      const clamp = value => Math.max(0, Math.min(100, value))
+      const scopeQueryParam = 'scope'
+      const directoryRows = report.directories.filter(row => row.path !== '(root)')
+      const suggestionRows = Array.isArray(report.directoryTeamSuggestions) ? report.directoryTeamSuggestions : []
+      const suggestionMeta = report.directoryTeamSuggestionsMeta || { enabled: false, warnings: [] }
+      const suggestionByPath = new Map(suggestionRows.map((row) => [row.path, row]))
+      const directoryRowByPath = new Map()
+      const childrenByParent = new Map()
+      const knownScopes = new Set()
+      for (const row of directoryRows) {
+        directoryRowByPath.set(row.path, row)
+        knownScopes.add(row.path)
+        const parent = parentPath(row.path)
+        if (!childrenByParent.has(parent)) {
+          childrenByParent.set(parent, [])
+        }
+        childrenByParent.get(parent).push(row)
+      }
+      directoryRowByPath.set('(root)', report.directories.find(row => row.path === '(root)'))
+      let selectedPath = readScopeFromLocation()
+      let directoryController
+      let unownedController
+
+      function setScope (nextPath, options) {
+        const historyMode = options && options.historyMode ? options.historyMode : 'push'
+        const normalizedScope = normalizeScope(nextPath)
+        const didChange = selectedPath !== normalizedScope
+        selectedPath = normalizedScope
+
+        const scrollAnchor = document.getElementById('dir-filter')
+        const anchorTopBefore = scrollAnchor ? scrollAnchor.getBoundingClientRect().top : null
+        renderTopLevel()
+        if (directoryController) directoryController.render()
+        if (unownedController) unownedController.render()
+        if (scrollAnchor && anchorTopBefore !== null) {
+          const anchorTopAfter = scrollAnchor.getBoundingClientRect().top
+          const delta = anchorTopAfter - anchorTopBefore
+          if (delta !== 0) {
+            globalThis.scrollBy(0, delta)
+          }
+        }
+
+        if (historyMode !== 'none') {
+          if (historyMode === 'replace') {
+            syncScopeToLocation(selectedPath, true)
+          } else if (didChange) {
+            syncScopeToLocation(selectedPath, false)
+          }
+        }
+      }
+
+      document.getElementById('subtitle').textContent =
+        report.repoName + (report.options.includeUntracked ? ' (tracked + untracked files)' : ' (tracked files)')
+      document.getElementById('generatedAt').textContent = 'Generated ' + new Date(report.generatedAt).toLocaleString()
+      document.getElementById('metric-files').textContent = fmt.format(report.totals.files)
+      document.getElementById('metric-owned').textContent = fmt.format(report.totals.owned)
+      document.getElementById('metric-unowned').textContent = fmt.format(report.totals.unowned)
+      document.getElementById('metric-coverage').textContent = percent(report.totals.coverage)
+      document.getElementById('coverage-owned').style.width = clamp(report.totals.coverage) + '%'
+      document.getElementById('coverage-unowned').style.width = clamp(100 - report.totals.coverage) + '%'
+
+      renderTopLevel()
+      renderCodeownersFiles(report.codeownersFiles)
+      directoryController = setupDirectoryTable(report.directories, suggestionByPath, suggestionMeta, () => selectedPath, setScope)
+      unownedController = setupUnownedFiles(report.unownedFiles, () => selectedPath)
+      syncScopeToLocation(selectedPath, true)
+
+      globalThis.addEventListener('popstate', () => {
+        setScope(readScopeFromLocation(), { historyMode: 'none' })
+      })
+
+      function renderTopLevel () {
+        const scope = selectedPath
+        const scopeKey = scope || '(root)'
+        const subtitle = document.getElementById('top-level-subtitle')
+        const container = document.getElementById('top-level-list')
+        const scopeRow = getDirectScopeStats(scope)
+        let rows = directoryRows.filter(row => isDirectChild(row.path, scope) && row.unowned > 0)
+        if (scopeRow && scopeRow.unowned > 0) {
+          rows.push(scopeRow)
+        }
+        rows = rows.sort((a, b) => {
+          if (a.unowned !== b.unowned) return b.unowned - a.unowned
+          if (a.total !== b.total) return b.total - a.total
+          return a.path.localeCompare(b.path)
+        })
+
+        subtitle.textContent = 'Scope: ' + scopeKey + ' — direct files in current directory plus direct subdirectories with missing coverage'
+        container.innerHTML = ''
+
+        if (!rows.length) {
+          const empty = document.createElement('div')
+          empty.className = 'row'
+          empty.textContent = 'No child directories with missing coverage in this scope.'
+          container.appendChild(empty)
+          return
+        }
+
+        for (const row of rows.slice(0, 20)) {
+          const wrapper = document.createElement('div')
+          wrapper.className = 'row' + (row.path === scopeKey ? ' selected' : '')
+
+          const header = document.createElement('div')
+          header.className = 'row-header'
+
+          const isCurrentScopeRow = row.path === scopeKey
+          const title = isCurrentScopeRow
+            ? document.createElement('span')
+            : document.createElement('button')
+          title.className = isCurrentScopeRow ? 'path' : 'path path-button'
+          title.textContent = isCurrentScopeRow
+            ? (scope ? 'Current directory' : 'Root')
+            : relativeLabel(row.path, scope)
+          if (!isCurrentScopeRow) {
+            title.type = 'button'
+            title.title = 'Drill into ' + row.path
+            title.addEventListener('click', () => setScope(row.path))
+          }
+
+          const meta = document.createElement('div')
+          meta.className = 'pill'
+          meta.textContent = fmt.format(row.unowned) + ' unowned / ' + fmt.format(row.total) +
+            (isCurrentScopeRow ? ' direct files' : ' total')
+
+          header.appendChild(title)
+          header.appendChild(meta)
+
+          const bar = document.createElement('div')
+          bar.className = 'dir-bar'
+
+          const ownedPart = document.createElement('div')
+          ownedPart.className = 'owned'
+          ownedPart.style.width = clamp(row.coverage) + '%'
+
+          const unownedPart = document.createElement('div')
+          unownedPart.className = 'unowned'
+          unownedPart.style.width = clamp(100 - row.coverage) + '%'
+
+          bar.appendChild(ownedPart)
+          bar.appendChild(unownedPart)
+
+          wrapper.appendChild(header)
+          wrapper.appendChild(bar)
+          container.appendChild(wrapper)
+        }
+      }
+
+      function renderCodeownersFiles (rows) {
+        const body = document.getElementById('codeowners-table-body')
+        body.innerHTML = ''
+        for (const row of rows) {
+          const tr = document.createElement('tr')
+          tr.innerHTML = [
+            '<td class="path"></td>',
+            '<td class="path"></td>',
+            '<td></td>'
+          ].join('')
+          tr.children[0].textContent = row.path
+          tr.children[1].textContent = row.dir
+          tr.children[2].textContent = fmt.format(row.rules)
+          body.appendChild(tr)
+        }
+      }
+
+      function setupDirectoryTable (allRows, suggestionLookup, suggestionContext, getScope, onScopeChange) {
+        const body = document.getElementById('directory-table-body')
+        const count = document.getElementById('directory-count')
+        const filterInput = document.getElementById('dir-filter')
+        const onlyGaps = document.getElementById('dir-only-gaps')
+        const breadcrumbs = document.getElementById('dir-breadcrumbs')
+        const upButton = document.getElementById('dir-up')
+        const resetButton = document.getElementById('dir-reset')
+        const headerCells = Array.from(document.querySelectorAll('th[data-sort]'))
+        let sortKey = 'unowned'
+        let sortDirection = 'desc'
+
+        for (const headerCell of headerCells) {
+          headerCell.addEventListener('click', () => {
+            const clickedKey = headerCell.getAttribute('data-sort')
+            if (sortKey === clickedKey) {
+              sortDirection = sortDirection === 'desc' ? 'asc' : 'desc'
+            } else {
+              sortKey = clickedKey
+              sortDirection = clickedKey === 'path' ? 'asc' : 'desc'
+            }
+            render()
+          })
+        }
+
+        filterInput.addEventListener('input', render)
+        onlyGaps.addEventListener('change', render)
+        upButton.addEventListener('click', () => onScopeChange(parentPath(getScope())))
+        resetButton.addEventListener('click', () => onScopeChange(''))
+
+        render()
+
+        function render () {
+          const scope = getScope()
+          const query = filterInput.value.trim().toLowerCase()
+          let rows = allRows.filter(row => {
+            if (row.path === '(root)') return false
+            if (!isDirectChild(row.path, scope)) return false
+            return !onlyGaps.checked || row.unowned > 0
+          })
+          if (query) {
+            rows = rows.filter(row => row.path.toLowerCase().includes(query))
+          }
+
+          rows = rows.sort((a, b) => {
+            const mult = sortDirection === 'asc' ? 1 : -1
+            if (sortKey === 'path') return a.path.localeCompare(b.path) * mult
+            return (a[sortKey] - b[sortKey]) * mult || a.path.localeCompare(b.path)
+          })
+
+          body.innerHTML = ''
+          for (const row of rows.slice(0, 2500)) {
+            const tr = document.createElement('tr')
+            const bar = '<div class="dir-bar">' +
+              '<div class="owned" style="width:' + clamp(row.coverage) + '%"></div>' +
+              '<div class="unowned" style="width:' + clamp(100 - row.coverage) + '%"></div>' +
+              '</div>'
+            tr.innerHTML = [
+              '<td class="path"></td>',
+              '<td></td>',
+              '<td></td>',
+              '<td></td>',
+              '<td class="path"></td>',
+              '<td>' + bar + '</td>'
+            ].join('')
+            const pathButton = document.createElement('button')
+            pathButton.className = 'path path-button'
+            pathButton.type = 'button'
+            pathButton.textContent = relativeLabel(row.path, scope)
+            pathButton.title = 'Drill into ' + row.path
+            pathButton.addEventListener('click', () => onScopeChange(row.path))
+            tr.children[0].appendChild(pathButton)
+            tr.children[1].textContent = fmt.format(row.unowned)
+            tr.children[2].textContent = fmt.format(row.total)
+            tr.children[3].textContent = percent(row.coverage)
+            const suggestion = suggestionLookup.get(row.path)
+            const renderedSuggestion = formatSuggestionCell(suggestion, suggestionContext)
+            tr.children[4].textContent = renderedSuggestion.label
+            tr.children[4].title = renderedSuggestion.title
+            if (renderedSuggestion.muted) {
+              tr.children[4].classList.add('suggestion-muted')
+            } else {
+              tr.children[4].classList.remove('suggestion-muted')
+            }
+            body.appendChild(tr)
+          }
+
+          upButton.disabled = !scope
+          resetButton.disabled = !scope
+          renderBreadcrumbs(scope, breadcrumbs, onScopeChange)
+          count.textContent = 'Scope: ' + (scope || '(root)') + ' — showing ' +
+            fmt.format(Math.min(rows.length, 2500)) + ' of ' + fmt.format(rows.length) + ' directories.'
+        }
+
+        return { render }
+      }
+
+      function formatSuggestionCell (suggestion, suggestionContext) {
+        if (!suggestionContext || !suggestionContext.enabled) {
+          return {
+            label: '(disabled)',
+            title: 'Enable --team-suggestions to compute team recommendations for uncovered directories.',
+            muted: true,
+          }
+        }
+        if (!suggestion) {
+          return { label: '-', title: 'No suggestion data for this directory.', muted: true }
+        }
+
+        if (suggestion.status === 'ok' && suggestion.candidates.length > 0) {
+          const top = suggestion.candidates[0]
+          const extraCount = suggestion.candidates.length - 1
+          const suffix = extraCount > 0 ? ' +' + extraCount : ''
+          const coverageRatio = Number(suggestion.coverageRatio || 0) * 100
+          const candidateLines = suggestion.candidates.map((candidate, index) => {
+            const sharePercent = Number(candidate.share || 0) * 100
+            return (index + 1) + '. ' + candidate.team +
+              ' (score ' + fmt.format(candidate.score) + ', ' + sharePercent.toFixed(1) + '%)'
+          })
+          return {
+            label: top.team + suffix,
+            title: [
+              'Suggestions:',
+              ...candidateLines,
+              'Mapped edits: ' + suggestion.mappedEdits + '/' + suggestion.totalEdits + ' (' + coverageRatio.toFixed(1) + '%)',
+            ].join('\n'),
+            muted: false,
+          }
+        }
+
+        const statusLabels = {
+          'no-history': 'No history',
+          'no-auth': 'Auth required',
+          'insufficient-mapping': 'Unknown authors',
+          'no-team-match': 'No team match',
+          error: 'Error',
+        }
+        const label = statusLabels[suggestion.status] || 'Unavailable'
+        const titleParts = ['Status: ' + label]
+        if (typeof suggestion.totalEdits === 'number') {
+          titleParts.push('Observed edits: ' + suggestion.totalEdits)
+        }
+        if (suggestion.reason) {
+          titleParts.push('Reason: ' + suggestion.reason)
+        } else if (Array.isArray(suggestionContext.warnings) && suggestionContext.warnings.length > 0) {
+          titleParts.push('Warning: ' + suggestionContext.warnings[0])
+        }
+        return {
+          label,
+          title: titleParts.join('\n'),
+          muted: true,
+        }
+      }
+
+      function getDirectScopeStats (scope) {
+        const scopeKey = scope || '(root)'
+        const aggregateRow = directoryRowByPath.get(scopeKey)
+        if (!aggregateRow) return null
+
+        let total = aggregateRow.total
+        let owned = aggregateRow.owned
+        let unowned = aggregateRow.unowned
+        const childRows = childrenByParent.get(scope) || []
+        for (const child of childRows) {
+          total -= child.total
+          owned -= child.owned
+          unowned -= child.unowned
+        }
+
+        const safeTotal = Math.max(0, total)
+        const safeOwned = Math.max(0, owned)
+        const safeUnowned = Math.max(0, unowned)
+        return {
+          path: scopeKey,
+          total: safeTotal,
+          owned: safeOwned,
+          unowned: safeUnowned,
+          coverage: safeTotal ? Math.round((safeOwned / safeTotal) * 1000) / 10 : 100,
+        }
+      }
+
+      function setupUnownedFiles (files, getScope) {
+        const filterInput = document.getElementById('file-filter')
+        const list = document.getElementById('unowned-file-list')
+        const count = document.getElementById('file-count')
+
+        filterInput.addEventListener('input', render)
+        render()
+
+        function render () {
+          const scope = getScope()
+          const query = filterInput.value.trim().toLowerCase()
+          const scoped = scope ? files.filter(file => file === scope || file.startsWith(scope + '/')) : files
+          const filtered = query ? scoped.filter(file => file.toLowerCase().includes(query)) : scoped
+          const shown = filtered.slice(0, 6000)
+          list.textContent = shown.join('\n') || '(none)'
+          count.textContent = 'Scope: ' + (scope || '(root)') + ' — showing ' +
+            fmt.format(shown.length) + ' of ' + fmt.format(filtered.length) + ' unowned files.'
+        }
+
+        return { render }
+      }
+
+      function parentPath (value) {
+        if (!value) return ''
+        const index = value.lastIndexOf('/')
+        return index === -1 ? '' : value.slice(0, index)
+      }
+
+      function isDirectChild (childPath, parent) {
+        if (!parent) {
+          return !childPath.includes('/')
+        }
+        if (!childPath.startsWith(parent + '/')) return false
+        const remainder = childPath.slice(parent.length + 1)
+        return remainder.length > 0 && !remainder.includes('/')
+      }
+
+      function relativeLabel (value, scope) {
+        if (!scope) return value
+        return value.slice(scope.length + 1)
+      }
+
+      function renderBreadcrumbs (scope, target, onScopeChange) {
+        target.innerHTML = ''
+
+        const rootButton = document.createElement('button')
+        rootButton.className = 'path-button'
+        rootButton.type = 'button'
+        rootButton.textContent = report.repoName
+        rootButton.addEventListener('click', () => onScopeChange(''))
+        target.appendChild(rootButton)
+
+        if (!scope) return
+
+        const parts = scope.split('/')
+        let built = ''
+        for (const part of parts) {
+          const sep = document.createElement('span')
+          sep.className = 'sep'
+          sep.textContent = '/'
+          target.appendChild(sep)
+
+          built = built ? built + '/' + part : part
+          const partButton = document.createElement('button')
+          partButton.className = 'path-button'
+          partButton.type = 'button'
+          partButton.textContent = part
+          const nextScope = built
+          partButton.addEventListener('click', () => onScopeChange(nextScope))
+          target.appendChild(partButton)
+        }
+      }
+
+      function normalizeScope (scope) {
+        if (!scope || scope === '(root)') return ''
+        const normalized = String(scope).replaceAll(/^\/+|\/+$/g, '')
+        if (!normalized) return ''
+        return knownScopes.has(normalized) ? normalized : ''
+      }
+
+      function readScopeFromLocation () {
+        const params = new URLSearchParams(globalThis.location.search)
+        return normalizeScope(params.get(scopeQueryParam))
+      }
+
+      function syncScopeToLocation (scope, replace) {
+        const nextUrl = new URL(globalThis.location.href)
+        if (scope) {
+          nextUrl.searchParams.set(scopeQueryParam, scope)
+        } else {
+          nextUrl.searchParams.delete(scopeQueryParam)
+        }
+
+        const nextState = { scope }
+        if (replace) {
+          globalThis.history.replaceState(nextState, '', nextUrl)
+        } else {
+          globalThis.history.pushState(nextState, '', nextUrl)
+        }
+      }
+    })()
+  </script>
+</body>
+</html>
