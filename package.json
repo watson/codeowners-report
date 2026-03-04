@@ -1,6 +1,6 @@
 {
   "name": "codeowners-audit",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Generate an HTML report for CODEOWNERS ownership gaps",
   "bin": {
     "codeowners-audit": "report.js"
