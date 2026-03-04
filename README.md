@@ -58,7 +58,7 @@ By default, the tool:
 | `-o, --output <path>` | Output HTML file path |
 | `--output-dir <dir>` | Output directory for the generated report |
 | `--include-untracked` | Include untracked (non-ignored) files in analysis |
-| `--upload` | Upload report to ZenBin and print a public URL |
+| `--upload` | Upload report to ZenBin and print a public URL (small reports only) |
 | `--no-open` | Do not open the report automatically |
 | `-h, --help` | Show help |
 | `-v, --version` | Show version |
@@ -96,6 +96,10 @@ The report follows practical `CODEOWNERS` resolution behavior:
 
 - Git CLI available on `PATH`
 - `curl` available on `PATH` when using `--upload`
+
+## Upload size note
+
+ZenBin currently rejects request payloads around 1 MiB and larger. Very large repositories can produce HTML reports beyond that limit, in which case `--upload` will fail with a clear size error. Use the generated local HTML file directly when this happens.
 
 ## Report contents
 

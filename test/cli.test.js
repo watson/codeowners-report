@@ -371,6 +371,47 @@ test('--upload opens uploaded URL in browser by default', (t) => {
   assert.match(result.stdout, /Opened report in browser: https:\/\/zenbin\.org\/p\/test-upload-open/)
 })
 
+test('--upload fails with a clear message when the report is too large', (t) => {
+  const repoDir = createRepo(t)
+  const fakeBinDir = path.join(repoDir, 'fake-bin')
+  const fakeCurlPath = path.join(fakeBinDir, 'curl')
+  const uploadLogPath = path.join(repoDir, 'fake-upload-payload.txt')
+  mkdirSync(fakeBinDir, { recursive: true })
+  writeFileSync(
+    fakeCurlPath,
+    [
+      '#!/usr/bin/env node',
+      'const fs = require("node:fs")',
+      'const payload = fs.readFileSync(0, "utf8")',
+      `fs.writeFileSync(${JSON.stringify(uploadLogPath)}, payload, "utf8")`,
+      'process.stdout.write(JSON.stringify({ url: "https://zenbin.org/p/should-not-run" }))',
+      '',
+    ].join('\n'),
+    'utf8'
+  )
+  chmodSync(fakeCurlPath, 0o755)
+
+  const longSegment = 'x'.repeat(160)
+  const largeFileCount = 6500
+  for (let index = 0; index < largeFileCount; index++) {
+    const filePath = path.join(repoDir, 'bulk', `file-${String(index).padStart(5, '0')}-${longSegment}.txt`)
+    mkdirSync(path.dirname(filePath), { recursive: true })
+    writeFileSync(filePath, 'x\n', 'utf8')
+  }
+  runGit(repoDir, ['add', 'bulk'])
+
+  const result = runCli(['--upload'], {
+    cwd: repoDir,
+    env: {
+      PATH: fakeBinDir + path.delimiter + process.env.PATH,
+    },
+  })
+
+  assert.equal(result.status, 1)
+  assert.match(result.stderr, /report is too large for ZenBin/)
+  assert.equal(existsSync(uploadLogPath), false, 'curl should not be called for oversized payloads')
+})
+
 test('unknown and invalid options fail with a useful error', (t) => {
   const repoDir = createRepo(t)
 

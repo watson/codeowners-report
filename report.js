@@ -13,6 +13,7 @@ const DEFAULT_OUTPUT_FILE_NAME = 'codeowners-gaps-report.html'
 const DEFAULT_OUTPUT_PATH = path.join(tmpdir(), 'codeowners-report', DEFAULT_OUTPUT_FILE_NAME)
 const UPLOAD_PROVIDER = 'zenbin'
 const ZENBIN_BASE_URL = 'https://zenbin.org'
+const ZENBIN_MAX_UPLOAD_BYTES = 1024 * 1024
 const GIT_COMMAND_MAX_BUFFER = 64 * 1024 * 1024
 
 main()
@@ -277,6 +278,15 @@ function uploadToZenbin (filePath) {
   const fileBaseName = path.basename(filePath, path.extname(filePath))
   const pageId = createZenbinPageId(fileBaseName)
   const payload = JSON.stringify({ html: readFileSync(filePath, 'utf8') })
+  const payloadBytes = Buffer.byteLength(payload, 'utf8')
+
+  if (payloadBytes >= ZENBIN_MAX_UPLOAD_BYTES) {
+    throw new Error(
+      'Upload failed (' + UPLOAD_PROVIDER + '): report is too large for ZenBin (' +
+      formatBytes(payloadBytes) + ' payload; limit is about ' + formatBytes(ZENBIN_MAX_UPLOAD_BYTES) + '). ' +
+      'Re-run without --upload and share the generated HTML file directly.'
+    )
+  }
 
   let stdout
   try {
@@ -300,7 +310,10 @@ function uploadToZenbin (filePath) {
     const stderr = error && typeof error === 'object' && 'stderr' in error
       ? String(error.stderr || '').trim()
       : ''
-    throw new Error('Upload failed (' + UPLOAD_PROVIDER + '): ' + (stderr || String(error)))
+    const likelyTooLargeHint = /returned error:\s*400\b/i.test(stderr)
+      ? ' (ZenBin may reject payloads near 1 MiB; current payload is ' + formatBytes(payloadBytes) + ')'
+      : ''
+    throw new Error('Upload failed (' + UPLOAD_PROVIDER + '): ' + (stderr || String(error)) + likelyTooLargeHint)
   }
 
   /** @type {{ url?: string }} */
@@ -319,6 +332,15 @@ function uploadToZenbin (filePath) {
   }
 
   return maybeUrl
+}
+
+/**
+ * Format bytes as an integer KiB value.
+ * @param {number} byteCount
+ * @returns {string}
+ */
+function formatBytes (byteCount) {
+  return Math.ceil(byteCount / 1024) + ' KiB'
 }
 
 /**
