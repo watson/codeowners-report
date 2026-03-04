@@ -173,6 +173,30 @@ test('--include-untracked adds untracked files to analysis', (t) => {
   assert.ok(withFlagData.unownedFiles.includes('new-untracked-file.txt'))
 })
 
+test('top-level .github/CODEOWNERS applies rules repository-wide', (t) => {
+  const repoDir = createRepo(t, {
+    codeowners: '/does-not-match-anything @fallback\n',
+    trackedFiles: {
+      '.github/CODEOWNERS': '/src/owned.js @team\n',
+    },
+  })
+
+  const result = runCli(['--output', 'github-codeowners-scope.html'], { cwd: repoDir })
+  assert.equal(result.status, 0, result.stderr)
+
+  const html = readFileSync(path.join(repoDir, 'github-codeowners-scope.html'), 'utf8')
+  const reportData = parseReportDataFromHtml(html)
+
+  assert.equal(reportData.totals.owned, 1)
+  assert.equal(reportData.totals.unowned, reportData.totals.files - 1)
+  assert.ok(!reportData.unownedFiles.includes('src/owned.js'))
+  assert.ok(reportData.unownedFiles.includes('src/unowned.js'))
+
+  const githubCodeowners = reportData.codeownersFiles.find(row => row.path === '.github/CODEOWNERS')
+  assert.ok(githubCodeowners, 'report should include .github/CODEOWNERS metadata')
+  assert.equal(githubCodeowners.dir, '.')
+})
+
 test('handles large repositories without git stdout buffer overflow', (t) => {
   const repoDir = createRepo(t)
   const longSegment = 'x'.repeat(160)

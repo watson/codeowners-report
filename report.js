@@ -379,6 +379,26 @@ function isCodeownersFile (filePath) {
 }
 
 /**
+ * Resolve the scope base for a CODEOWNERS file.
+ * GitHub treats top-level CODEOWNERS files in root, .github/, and docs/
+ * as repository-wide files.
+ * @param {string} codeownersPath
+ * @returns {string}
+ */
+function resolveCodeownersScopeBase (codeownersPath) {
+  if (
+    codeownersPath === 'CODEOWNERS' ||
+    codeownersPath === '.github/CODEOWNERS' ||
+    codeownersPath === 'docs/CODEOWNERS'
+  ) {
+    return ''
+  }
+
+  const codeownersDir = path.posix.dirname(codeownersPath)
+  return codeownersDir === '.' ? '' : codeownersDir
+}
+
+/**
  * Normalize a path to POSIX separators.
  * @param {string} value
  * @returns {string}
@@ -402,8 +422,7 @@ function toPosixPath (value) {
  * }}
  */
 function loadCodeownersDescriptor (repoRoot, codeownersPath) {
-  const codeownersDir = path.posix.dirname(codeownersPath)
-  const descriptorDir = codeownersDir === '.' ? '' : codeownersDir
+  const descriptorDir = resolveCodeownersScopeBase(codeownersPath)
   const fileContent = readFileSync(path.join(repoRoot, codeownersPath), 'utf8')
   const rules = parseCodeowners(fileContent)
 
