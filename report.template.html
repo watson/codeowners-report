@@ -596,14 +596,19 @@
             tr.children[2].textContent = fmt.format(row.total)
             tr.children[3].textContent = percent(row.coverage)
             if (showSuggestionColumn) {
-              const suggestion = suggestionLookup.get(row.path)
-              const renderedSuggestion = formatSuggestionCell(suggestion)
-              tr.children[4].textContent = renderedSuggestion.label
-              tr.children[4].title = renderedSuggestion.title
-              if (renderedSuggestion.muted) {
-                tr.children[4].classList.add('suggestion-muted')
-              } else {
-                tr.children[4].classList.remove('suggestion-muted')
+              const suggestion = suggestionLookup && typeof suggestionLookup.get === 'function'
+                ? suggestionLookup.get(row.path)
+                : null
+              const renderedSuggestion = formatSuggestionCell(suggestion, suggestionContext)
+              const suggestionCell = tr.children[4]
+              if (suggestionCell) {
+                suggestionCell.textContent = renderedSuggestion.label
+                suggestionCell.title = renderedSuggestion.title
+                if (renderedSuggestion.muted) {
+                  suggestionCell.classList.add('suggestion-muted')
+                } else {
+                  suggestionCell.classList.remove('suggestion-muted')
+                }
               }
             }
             body.appendChild(tr)
@@ -619,17 +624,19 @@
         return { render }
       }
 
-      function formatSuggestionCell (suggestion) {
-        if (!suggestion) {
+      function formatSuggestionCell (suggestion, suggestionContext) {
+        if (!suggestion || typeof suggestion !== 'object') {
           return { label: '-', title: 'No suggestion data for this directory.', muted: true }
         }
 
-        if (suggestion.status === 'ok' && suggestion.candidates.length > 0) {
-          const top = suggestion.candidates[0]
-          const extraCount = suggestion.candidates.length - 1
+        const candidates = Array.isArray(suggestion.candidates) ? suggestion.candidates : []
+
+        if (suggestion.status === 'ok' && candidates.length > 0) {
+          const top = candidates[0]
+          const extraCount = candidates.length - 1
           const suffix = extraCount > 0 ? ' +' + extraCount : ''
           const coverageRatio = Number(suggestion.coverageRatio || 0) * 100
-          const candidateLines = suggestion.candidates.map((candidate, index) => {
+          const candidateLines = candidates.map((candidate, index) => {
             const sharePercent = Number(candidate.share || 0) * 100
             return (index + 1) + '. ' + candidate.team +
               ' (score ' + fmt.format(candidate.score) + ', ' + sharePercent.toFixed(1) + '%)'
@@ -771,7 +778,7 @@
 
       function normalizeScope (scope) {
         if (!scope || scope === '(root)') return ''
-        const normalized = String(scope).replaceAll(/^\/+|\/+$/g, '')
+        const normalized = String(scope).replace(/^\/+|\/+$/g, '')
         if (!normalized) return ''
         return knownScopes.has(normalized) ? normalized : ''
       }
