@@ -83,18 +83,6 @@ Write report to repository:
 codeowners-report --output codeowners-gaps-report.html --no-open
 ```
 
-Write report to a specific folder:
-
-```bash
-codeowners-report --output-dir reports --no-open
-```
-
-Include untracked files in analysis:
-
-```bash
-codeowners-report --include-untracked --output reports/all-files.html --no-open
-```
-
 ## How matching works
 
 The report follows practical `CODEOWNERS` resolution behavior:
