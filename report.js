@@ -15,6 +15,8 @@ const UPLOAD_PROVIDER = 'zenbin'
 const ZENBIN_BASE_URL = 'https://zenbin.org'
 const ZENBIN_MAX_UPLOAD_BYTES = 1024 * 1024
 const GIT_COMMAND_MAX_BUFFER = 64 * 1024 * 1024
+const EXIT_CODE_UNCOVERED = 1
+const EXIT_CODE_RUNTIME_ERROR = 2
 
 main()
 
@@ -93,7 +95,7 @@ function main () {
   } catch (error) {
     console.error('Failed to generate CODEOWNERS gap report:')
     console.error(String(error && error.stack ? error.stack : error))
-    process.exit(1)
+    process.exit(EXIT_CODE_RUNTIME_ERROR)
   }
 }
 
@@ -308,7 +310,8 @@ function openReportInBrowser (target) {
 }
 
 /**
- * Run CLI-only CODEOWNERS ownership check and set process exit code on failure.
+ * Run CLI-only CODEOWNERS ownership check.
+ * Exit code 1 means uncovered files; runtime/setup errors use exit code 2.
  * @param {string} repoRoot
  * @param {string[]} files
  * @param {{
@@ -341,7 +344,7 @@ function runOwnershipCheck (repoRoot, files, codeownersDescriptors, options) {
     for (const filePath of report.unownedFiles) {
       console.error('  - %s', filePath)
     }
-    process.exitCode = 1
+    process.exitCode = EXIT_CODE_UNCOVERED
     return
   }
 

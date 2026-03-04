@@ -500,7 +500,7 @@ test('--upload fails with a clear message when the report is too large', (t) => 
     },
   })
 
-  assert.equal(result.status, 1)
+  assert.equal(result.status, 2)
   assert.match(result.stderr, /report is too large for ZenBin/)
   assert.equal(existsSync(uploadLogPath), false, 'curl should not be called for oversized payloads')
 })
@@ -509,22 +509,22 @@ test('unknown and invalid options fail with a useful error', (t) => {
   const repoDir = createRepo(t)
 
   const unknownResult = runCli(['--nope'], { cwd: repoDir })
-  assert.equal(unknownResult.status, 1)
+  assert.equal(unknownResult.status, 2)
   assert.match(unknownResult.stderr, /Unknown argument: --nope/)
 
   const missingOutputResult = runCli(['--output'], { cwd: repoDir })
-  assert.equal(missingOutputResult.status, 1)
+  assert.equal(missingOutputResult.status, 2)
   assert.match(missingOutputResult.stderr, /Missing value for --output/)
 
   const missingOutputDirResult = runCli(['--output-dir'], { cwd: repoDir })
-  assert.equal(missingOutputDirResult.status, 1)
+  assert.equal(missingOutputDirResult.status, 2)
   assert.match(missingOutputDirResult.stderr, /Missing value for --output-dir/)
 
   const missingWorkingDirResult = runCli(['--working-dir'], { cwd: repoDir })
-  assert.equal(missingWorkingDirResult.status, 1)
+  assert.equal(missingWorkingDirResult.status, 2)
   assert.match(missingWorkingDirResult.stderr, /Missing value for --working-dir/)
 
   const missingCheckGlobResult = runCli(['--check='], { cwd: repoDir })
-  assert.equal(missingCheckGlobResult.status, 1)
+  assert.equal(missingCheckGlobResult.status, 2)
   assert.match(missingCheckGlobResult.stderr, /Missing value for --check/)
 })

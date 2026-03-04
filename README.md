@@ -108,7 +108,7 @@ In this mode no HTML report is generated; the command only validates ownership c
 
 - Exit code `0`: all matched files are covered by `CODEOWNERS`.
 - Exit code `1`: one or more matched files are uncovered (the uncovered file paths are printed to stderr).
-- Exit code `1`: runtime/setup error (for example: not in a Git repository, missing `CODEOWNERS`, invalid arguments).
+- Exit code `2`: runtime/setup error (for example: not in a Git repository, missing `CODEOWNERS`, invalid arguments).
 
 ### Common CI commands
 
