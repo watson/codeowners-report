@@ -156,7 +156,7 @@ function addTrackedBulkFilesForStress (repoDir, minimumGitListBytes) {
   while (estimatedGitListBytes < minimumGitListBytes) {
     const fileName = `file-${String(fileCount).padStart(5, '0')}-${fileSuffix}.txt`
     writeFileSync(path.join(bulkAbsoluteDir, fileName), 'x\n', 'utf8')
-    const relativePath = bulkRelativeDir + '/' + fileName
+    const relativePath = `${bulkRelativeDir}/${fileName}`
     estimatedGitListBytes += Buffer.byteLength(relativePath, 'utf8') + 1
     fileCount++
   }
@@ -193,7 +193,7 @@ test('running the bin creates a report in temp dir with expected shape', (t) => 
   assert.match(html, /<title>CODEOWNERS Gap Report<\/title>/)
   assert.match(html, /alt="codeowners-audit logo"/, 'report header should include a logo image')
   assert.ok(
-    html.includes('https://raw.githubusercontent.com/watson/codeowners-audit/v' + packageVersion + '/assets/logo2-small.png'),
+    html.includes(`https://raw.githubusercontent.com/watson/codeowners-audit/v${packageVersion}/assets/logo2-small.png`),
     'report logo should be loaded from the versioned raw GitHub asset path'
   )
   assert.match(html, /min-width:\s*0;/, 'panels should remain width-constrained on narrow screens')
@@ -300,7 +300,7 @@ test('team suggestions map editors to repo teams for 0% covered directories', as
   })
   const address = server.address()
   assert.ok(address && typeof address === 'object')
-  const apiBaseUrl = 'http://127.0.0.1:' + address.port
+  const apiBaseUrl = `http://127.0.0.1:${address.port}`
 
   const result = await runCliAsync(
     [
@@ -431,7 +431,7 @@ test('team suggestions fall back to GITHUB_TOKEN env when --github-token is omit
   })
   const address = server.address()
   assert.ok(address && typeof address === 'object')
-  const apiBaseUrl = 'http://127.0.0.1:' + address.port
+  const apiBaseUrl = `http://127.0.0.1:${address.port}`
 
   const result = await runCliAsync(
     [
@@ -513,7 +513,7 @@ test('team suggestions support ignored team list', async (t) => {
   })
   const address = server.address()
   assert.ok(address && typeof address === 'object')
-  const apiBaseUrl = 'http://127.0.0.1:' + address.port
+  const apiBaseUrl = `http://127.0.0.1:${address.port}`
 
   const result = await runCliAsync(
     [
@@ -552,7 +552,7 @@ test('output path options write to the requested location', (t) => {
 
   {
     const equalsPath = 'reports/equals-output.html'
-    const result = runCli(['--output=' + equalsPath], { cwd: repoDir })
+    const result = runCli([`--output=${equalsPath}`], { cwd: repoDir })
     assert.equal(result.status, 0, result.stderr)
     assert.ok(existsSync(path.join(repoDir, equalsPath)))
   }
@@ -574,7 +574,7 @@ test('output directory option writes to the requested directory', (t) => {
       rmSync(absoluteDir, { recursive: true, force: true })
     })
 
-    const result = runCli(['--output-dir=' + absoluteDir], { cwd: repoDir })
+    const result = runCli([`--output-dir=${absoluteDir}`], { cwd: repoDir })
     assert.equal(result.status, 0, result.stderr)
     assert.ok(existsSync(path.join(absoluteDir, defaultOutputFile)))
   }

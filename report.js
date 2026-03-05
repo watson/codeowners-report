@@ -28,7 +28,7 @@ const packageVersion = JSON.parse(readFileSync(new URL('./package.json', import.
 const REPORT_TEMPLATE_PATH = new URL('./report.template.html', import.meta.url)
 const REPORT_DATA_PLACEHOLDER = '__REPORT_DATA_JSON__'
 const REPORT_LOGO_URL_PLACEHOLDER = '__REPORT_LOGO_URL__'
-const REPORT_LOGO_URL = 'https://raw.githubusercontent.com/watson/codeowners-audit/v' + packageVersion + '/assets/logo2-small.png'
+const REPORT_LOGO_URL = `https://raw.githubusercontent.com/watson/codeowners-audit/v${packageVersion}/assets/logo2-small.png`
 const REPORT_HTML_TEMPLATE = readFileSync(REPORT_TEMPLATE_PATH, 'utf8')
 
 main()
@@ -391,7 +391,7 @@ function parseArgs (args) {
       continue
     }
 
-    throw new Error('Unknown argument: ' + arg)
+    throw new Error(`Unknown argument: ${arg}`)
   }
 
   if (!help && !outputPath) {
@@ -433,7 +433,7 @@ function parseArgs (args) {
   }
 
   if (!help && !isValidHttpUrl(githubApiBaseUrl)) {
-    throw new Error('Invalid value for --github-api-base-url: ' + JSON.stringify(githubApiBaseUrl))
+    throw new Error(`Invalid value for --github-api-base-url: ${JSON.stringify(githubApiBaseUrl)}`)
   }
 
   teamSuggestionsIgnoreTeams = dedupeStrings(
@@ -539,13 +539,13 @@ function printUsage () {
     ['--fail-on-unowned', 'Exit non-zero when one or more files are unowned'],
     ['-g, --glob <pattern>', 'Repeatable file filter for report/check scope (default: **)'],
     ['--suggest-teams', 'Suggest @org/team for uncovered directories'],
-    ['--suggest-window-days <days>', 'Git history lookback window for suggestions (default: ' + TEAM_SUGGESTIONS_DEFAULT_WINDOW_DAYS + ')'],
-    ['--suggest-top <n>', 'Top team suggestions to keep per directory (default: ' + TEAM_SUGGESTIONS_DEFAULT_TOP + ')'],
+    ['--suggest-window-days <days>', `Git history lookback window for suggestions (default: ${TEAM_SUGGESTIONS_DEFAULT_WINDOW_DAYS})`],
+    ['--suggest-top <n>', `Top team suggestions to keep per directory (default: ${TEAM_SUGGESTIONS_DEFAULT_TOP})`],
     ['--suggest-ignore-teams <list>', 'Comma-separated team slugs or @org/slug entries to exclude from suggestions'],
     ['--github-org <org>', 'Override GitHub org for team lookups'],
     ['--github-token <token>', 'GitHub token for team lookups (falls back to GITHUB_TOKEN, then GH_TOKEN)'],
-    ['--github-api-base-url <url>', 'GitHub API base URL (default: ' + GITHUB_API_BASE_URL + ')'],
-    ['--upload', 'Upload to ' + UPLOAD_PROVIDER + ' and print a public URL'],
+    ['--github-api-base-url <url>', `GitHub API base URL (default: ${GITHUB_API_BASE_URL})`],
+    ['--upload', `Upload to ${UPLOAD_PROVIDER} and print a public URL`],
     ['--no-open', 'Do not prompt to open the report in your browser'],
     ['--verbose', 'Enable verbose progress output'],
     ['-h, --help', 'Show this help'],
@@ -596,11 +596,11 @@ function formatUsageOptions (optionRows) {
  */
 function parseNumberOption (value, optionName) {
   if (!value) {
-    throw new Error('Missing value for ' + optionName + '.')
+    throw new Error(`Missing value for ${optionName}.`)
   }
   const parsed = Number.parseInt(value, 10)
   if (!Number.isFinite(parsed)) {
-    throw new Error('Invalid numeric value for ' + optionName + ': ' + JSON.stringify(value))
+    throw new Error(`Invalid numeric value for ${optionName}: ${JSON.stringify(value)}`)
   }
   return parsed
 }
@@ -613,11 +613,11 @@ function parseNumberOption (value, optionName) {
  */
 function parseGlobOption (value, optionName) {
   if (!value) {
-    throw new Error('Missing value for ' + optionName + '.')
+    throw new Error(`Missing value for ${optionName}.`)
   }
   const normalized = String(value).trim()
   if (!normalized) {
-    throw new Error('Missing value for ' + optionName + '.')
+    throw new Error(`Missing value for ${optionName}.`)
   }
   return normalized
 }
@@ -630,14 +630,14 @@ function parseGlobOption (value, optionName) {
  */
 function parseCsvListOption (value, optionName) {
   if (!value) {
-    throw new Error('Missing value for ' + optionName + '.')
+    throw new Error(`Missing value for ${optionName}.`)
   }
   const items = String(value)
     .split(',')
     .map(item => item.trim())
     .filter(Boolean)
   if (items.length === 0) {
-    throw new Error('Missing value for ' + optionName + '.')
+    throw new Error(`Missing value for ${optionName}.`)
   }
   return items
 }
@@ -801,9 +801,9 @@ function uploadToZenbin (filePath) {
 
   if (payloadBytes >= ZENBIN_MAX_UPLOAD_BYTES) {
     throw new Error(
-      'Upload failed (' + UPLOAD_PROVIDER + '): report is too large for ZenBin (' +
-      formatBytes(payloadBytes) + ' payload; limit is about ' + formatBytes(ZENBIN_MAX_UPLOAD_BYTES) + '). ' +
-      'Re-run without --upload and share the generated HTML file directly.'
+      `Upload failed (${UPLOAD_PROVIDER}): report is too large for ZenBin (${formatBytes(payloadBytes)} payload; ` +
+      `limit is about ${formatBytes(ZENBIN_MAX_UPLOAD_BYTES)}). ` +
+      `Re-run without --upload and share the generated HTML file directly.`
     )
   }
 
@@ -819,7 +819,7 @@ function uploadToZenbin (filePath) {
       'Content-Type: application/json',
       '--data-binary',
       '@-',
-      ZENBIN_BASE_URL + '/v1/pages/' + pageId,
+      `${ZENBIN_BASE_URL}/v1/pages/${pageId}`,
     ], {
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -830,9 +830,9 @@ function uploadToZenbin (filePath) {
       ? String(error.stderr || '').trim()
       : ''
     const likelyTooLargeHint = /returned error:\s*400\b/i.test(stderr)
-      ? ' (ZenBin may reject payloads near 1 MiB; current payload is ' + formatBytes(payloadBytes) + ')'
+      ? ` (ZenBin may reject payloads near 1 MiB; current payload is ${formatBytes(payloadBytes)})`
       : ''
-    throw new Error('Upload failed (' + UPLOAD_PROVIDER + '): ' + (stderr || String(error)) + likelyTooLargeHint)
+    throw new Error(`Upload failed (${UPLOAD_PROVIDER}): ${stderr || String(error)}${likelyTooLargeHint}`)
   }
 
   /** @type {{ url?: string }} */
@@ -841,13 +841,13 @@ function uploadToZenbin (filePath) {
     response = JSON.parse(String(stdout))
   } catch {
     throw new Error(
-      'Upload failed (' + UPLOAD_PROVIDER + '): invalid JSON response: ' + JSON.stringify(String(stdout).trim())
+      `Upload failed (${UPLOAD_PROVIDER}): invalid JSON response: ${JSON.stringify(String(stdout).trim())}`
     )
   }
 
   const maybeUrl = response && typeof response.url === 'string' ? response.url.trim() : ''
   if (!/^https?:\/\//.test(maybeUrl)) {
-    throw new Error('Upload failed (' + UPLOAD_PROVIDER + '): missing URL in response: ' + JSON.stringify(response))
+    throw new Error(`Upload failed (${UPLOAD_PROVIDER}): missing URL in response: ${JSON.stringify(response)}`)
   }
 
   return maybeUrl
@@ -859,7 +859,7 @@ function uploadToZenbin (filePath) {
  * @returns {string}
  */
 function formatBytes (byteCount) {
-  return Math.ceil(byteCount / 1024) + ' KiB'
+  return `${Math.ceil(byteCount / 1024)} KiB`
 }
 
 /**
@@ -877,7 +877,7 @@ function createZenbinPageId (fileBaseName) {
   const base = normalizedBase || 'report'
   const timestamp = Date.now().toString(36)
   const randomPart = Math.random().toString(36).slice(2, 8)
-  return base + '-' + timestamp + '-' + randomPart
+  return `${base}-${timestamp}-${randomPart}`
 }
 
 /**
@@ -1066,11 +1066,11 @@ function createPatternMatcher (rawPattern, options = {}) {
   const lastSegmentHasWildcards = lastSegment.includes('*') || lastSegment.includes('?')
   const descendantSuffix = (directoryOnly || (includeDescendants && !lastSegmentHasWildcards)) ? '(?:/.*)?' : ''
   if (anchored) {
-    const anchoredRegex = new RegExp('^' + patternSource + descendantSuffix + '$')
+    const anchoredRegex = new RegExp(`^${patternSource}${descendantSuffix}$`)
     return (scopePath) => anchoredRegex.test(scopePath)
   }
 
-  const unanchoredRegex = new RegExp('(?:^|/)' + patternSource + descendantSuffix + '$')
+  const unanchoredRegex = new RegExp(`(?:^|/)${patternSource}${descendantSuffix}$`)
   return (scopePath, repoPath) => unanchoredRegex.test(scopePath) || unanchoredRegex.test(repoPath)
 }
 
@@ -1109,7 +1109,7 @@ function globToRegexSource (pattern) {
  * @returns {string}
  */
 function escapeRegexChar (char) {
-  return /[\\^$.*+?()[\]{}|]/.test(char) ? '\\' + char : char
+  return /[\\^$.*+?()[\]{}|]/.test(char) ? `\\${char}` : char
 }
 
 /**
@@ -1213,7 +1213,7 @@ function buildReport (repoRoot, files, codeownersDescriptors, options, progress 
     const segments = filePath.split('/')
     let currentPath = ''
     for (let index = 0; index < segments.length - 1; index++) {
-      currentPath = currentPath ? currentPath + '/' + segments[index] : segments[index]
+      currentPath = currentPath ? `${currentPath}/${segments[index]}` : segments[index]
       updateStats(directoryStats, currentPath, isOwned)
     }
 
@@ -1351,7 +1351,7 @@ function resolveOwners (filePath, codeownersDescriptors) {
  * @returns {boolean}
  */
 function pathIsInside (filePath, dirPath) {
-  return filePath === dirPath || filePath.startsWith(dirPath + '/')
+  return filePath === dirPath || filePath.startsWith(`${dirPath}/`)
 }
 
 /**
