@@ -57,7 +57,7 @@ By default, the tool:
 - writes the report to a temporary path
 - opens the report in your default browser
 
-For CI checks where you do not want an HTML report, use `--check`.
+For CI checks where you do not want an HTML report, use `--ci`.
 
 ### Options
 
@@ -67,7 +67,8 @@ For CI checks where you do not want an HTML report, use `--check`.
 | `--output-dir <dir>` | Output directory for the generated report |
 | `-C, --working-dir <dir>` | Resolve git operations from this directory (alias: `--cwd`) |
 | `--include-untracked` | Include untracked (non-ignored) files in analysis |
-| `--check[=<glob>]` | CLI-only check mode. No report is generated; exits non-zero if uncovered files match the glob (default: all files via `**`) |
+| `--ci` | CI check mode. No report is generated; exits non-zero if uncovered files are found |
+| `-g, --glob <pattern>` | Repeatable file filter for report/check scope. Defaults to all files via `**` when omitted |
 | `--upload` | Upload report to ZenBin and print a public URL (small reports only) |
 | `--no-open` | Do not open the report automatically |
 | `-h, --help` | Show help |
@@ -101,10 +102,10 @@ codeowners-audit --working-dir ~/code/my-repo
 
 ## Using in CI
 
-Use `--check` to turn `codeowners-audit` into a CI gate.
+Use `--ci` to turn `codeowners-audit` into a CI gate.
 In this mode no HTML report is generated; the command only validates ownership coverage.
 
-### What happens in `--check` mode
+### What happens in `--ci` mode
 
 - Exit code `0`: all matched files are covered by `CODEOWNERS`.
 - Exit code `1`: one or more matched files are uncovered (the uncovered file paths are printed to stderr).
@@ -115,20 +116,26 @@ In this mode no HTML report is generated; the command only validates ownership c
 Validate all tracked files:
 
 ```bash
-codeowners-audit --check
+codeowners-audit --ci
 ```
 
 Validate only a subset (for example spec files):
 
 ```bash
-codeowners-audit --check "**/*.spec.js"
+codeowners-audit --ci --glob "**/*.spec.js"
+```
+
+Validate multiple subsets in one run (combined as a union):
+
+```bash
+codeowners-audit --ci --glob "src/**/*.js" --glob "test/**/*.js"
 ```
 
 ### GitHub Actions example
 
 ```yaml
 - name: Verify CODEOWNERS coverage
-  run: npx codeowners-audit --check
+  run: npx codeowners-audit --ci
 ```
 
 ## How matching works

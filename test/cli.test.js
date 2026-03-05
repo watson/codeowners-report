@@ -474,14 +474,14 @@ test('--include-untracked adds untracked files to analysis', (t) => {
   assert.ok(withFlagData.unownedFiles.includes('new-untracked-file.txt'))
 })
 
-test('--check exits non-zero when unowned files exist and skips report generation', (t) => {
+test('--ci exits non-zero when unowned files exist and skips report generation', (t) => {
   const repoDir = createRepo(t, {
     trackedFiles: {
       'src/also-unowned.js': 'module.exports = 3\n',
     },
   })
 
-  const result = runCli(['--check'], { cwd: repoDir })
+  const result = runCli(['--ci'], { cwd: repoDir })
 
   assert.equal(result.status, 1)
   assert.doesNotMatch(result.stdout, /Wrote CODEOWNERS gap report/)
@@ -490,17 +490,58 @@ test('--check exits non-zero when unowned files exist and skips report generatio
   assert.match(result.stderr, /src\/unowned\.js/)
 })
 
-test('--check glob filters files before ownership validation', (t) => {
+test('--glob filters files before ownership validation in --ci mode', (t) => {
   const repoDir = createRepo(t)
 
-  const passingResult = runCli(['--check', 'src/owned.js'], { cwd: repoDir })
+  const passingResult = runCli(['--ci', '-g', 'src/owned.js'], { cwd: repoDir })
   assert.equal(passingResult.status, 0, passingResult.stderr)
   assert.match(passingResult.stdout, /CODEOWNERS check passed/)
   assert.doesNotMatch(passingResult.stdout, /Wrote CODEOWNERS gap report/)
 
-  const failingResult = runCli(['--check=src/*.js'], { cwd: repoDir })
+  const failingResult = runCli(['--ci', '--glob=src/*.js'], { cwd: repoDir })
   assert.equal(failingResult.status, 1)
   assert.match(failingResult.stderr, /src\/unowned\.js/)
+})
+
+test('--glob can be repeated and combines as a union', (t) => {
+  const repoDir = createRepo(t)
+
+  const result = runCli(
+    ['--ci', '--glob', 'src/owned.js', '--glob', 'src/unowned.js'],
+    { cwd: repoDir }
+  )
+
+  assert.equal(result.status, 1)
+  assert.match(result.stderr, /src\/unowned\.js/)
+})
+
+test('--glob also scopes report generation without --ci mode', (t) => {
+  const repoDir = createRepo(t)
+
+  const result = runCli(['--glob', 'src/owned.js', '--output', 'glob-scoped.html'], { cwd: repoDir })
+  assert.equal(result.status, 0, result.stderr)
+
+  const html = readFileSync(path.join(repoDir, 'glob-scoped.html'), 'utf8')
+  const reportData = parseReportDataFromHtml(html)
+  assert.equal(reportData.totals.files, 1)
+  assert.equal(reportData.totals.unowned, 0)
+  assert.deepEqual(reportData.unownedFiles, [])
+})
+
+test('--check and --check-only are rejected after flag rename', (t) => {
+  const repoDir = createRepo(t)
+
+  const result = runCli(['--check'], { cwd: repoDir })
+  assert.equal(result.status, 2)
+  assert.match(result.stderr, /Unknown argument: --check/)
+
+  const equalsResult = runCli(['--check=src/owned.js'], { cwd: repoDir })
+  assert.equal(equalsResult.status, 2)
+  assert.match(equalsResult.stderr, /Unknown argument: --check=src\/owned\.js/)
+
+  const oldCheckOnlyResult = runCli(['--check-only'], { cwd: repoDir })
+  assert.equal(oldCheckOnlyResult.status, 2)
+  assert.match(oldCheckOnlyResult.stderr, /Unknown argument: --check-only/)
 })
 
 test('directory CODEOWNERS pattern without trailing slash owns descendants', (t) => {
@@ -511,7 +552,7 @@ test('directory CODEOWNERS pattern without trailing slash owns descendants', (t)
     },
   })
 
-  const result = runCli(['--check', 'integration-tests/profiler/profiler.spec.js'], { cwd: repoDir })
+  const result = runCli(['--ci', '--glob', 'integration-tests/profiler/profiler.spec.js'], { cwd: repoDir })
 
   assert.equal(result.status, 0, result.stderr)
   assert.match(result.stdout, /CODEOWNERS check passed/)
@@ -525,7 +566,7 @@ test('wildcard root pattern does not own nested descendants', (t) => {
     },
   })
 
-  const result = runCli(['--check', 'nested/deep/file.js'], { cwd: repoDir })
+  const result = runCli(['--ci', '--glob', 'nested/deep/file.js'], { cwd: repoDir })
 
   assert.equal(result.status, 1)
   assert.match(result.stderr, /nested\/deep\/file\.js/)
@@ -539,7 +580,7 @@ test('wildcard in middle still allows directory descendant ownership', (t) => {
     },
   })
 
-  const result = runCli(['--check', 'packages/dd-trace/test-crashtracking/crashtracker.spec.js'], { cwd: repoDir })
+  const result = runCli(['--ci', '--glob', 'packages/dd-trace/test-crashtracking/crashtracker.spec.js'], { cwd: repoDir })
 
   assert.equal(result.status, 0, result.stderr)
   assert.match(result.stdout, /CODEOWNERS check passed/)
@@ -601,7 +642,11 @@ test('--help prints usage without failing', (t) => {
   assert.match(result.stdout, /--output-dir/)
   assert.match(result.stdout, /--working-dir/)
   assert.match(result.stdout, /--no-open/)
-  assert.match(result.stdout, /--check/)
+  assert.match(result.stdout, /--ci/)
+  assert.match(result.stdout, /--glob/)
+  assert.match(result.stdout, /-g, --glob <pattern>/)
+  assert.doesNotMatch(result.stdout, /(^|\s)--check(?:\s|$|\[|=)/m)
+  assert.doesNotMatch(result.stdout, /(^|\s)--check-only(?:\s|$|\[|=)/m)
   assert.match(result.stdout, /--team-suggestions/)
   assert.match(result.stdout, /--team-suggestions-ignore-teams/)
   assert.match(result.stdout, /--github-token-env/)
@@ -811,9 +856,17 @@ test('unknown and invalid options fail with a useful error', (t) => {
   assert.equal(missingWorkingDirResult.status, 2)
   assert.match(missingWorkingDirResult.stderr, /Missing value for --working-dir/)
 
-  const missingCheckGlobResult = runCli(['--check='], { cwd: repoDir })
-  assert.equal(missingCheckGlobResult.status, 2)
-  assert.match(missingCheckGlobResult.stderr, /Missing value for --check/)
+  const removedCheckResult = runCli(['--check='], { cwd: repoDir })
+  assert.equal(removedCheckResult.status, 2)
+  assert.match(removedCheckResult.stderr, /Unknown argument: --check=/)
+
+  const missingGlobResult = runCli(['--glob'], { cwd: repoDir })
+  assert.equal(missingGlobResult.status, 2)
+  assert.match(missingGlobResult.stderr, /Missing value for --glob/)
+
+  const missingShortGlobResult = runCli(['-g'], { cwd: repoDir })
+  assert.equal(missingShortGlobResult.status, 2)
+  assert.match(missingShortGlobResult.stderr, /Missing value for --glob/)
 
   const missingSuggestionsWindowResult = runCli(['--team-suggestions-window-days'], { cwd: repoDir })
   assert.equal(missingSuggestionsWindowResult.status, 2)

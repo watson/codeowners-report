@@ -63,14 +63,16 @@ async function main () {
       .map(codeownersPath => loadCodeownersDescriptor(repoRoot, codeownersPath))
       .sort(compareCodeownersDescriptor)
 
+    const scopeFilteredFiles = filterFilesByCliGlobs(allRepoFiles, options.checkGlobs)
+
     if (options.checkOnly) {
-      runOwnershipCheck(repoRoot, allRepoFiles, codeownersDescriptors, options)
+      runOwnershipCheck(repoRoot, scopeFilteredFiles, codeownersDescriptors, options)
       return
     }
 
     const outputAbsolutePath = path.resolve(repoRoot, options.outputPath)
     const outputRelativePath = toPosixPath(path.relative(repoRoot, outputAbsolutePath))
-    const filesToAnalyze = allRepoFiles.filter(filePath => filePath !== outputRelativePath)
+    const filesToAnalyze = scopeFilteredFiles.filter(filePath => filePath !== outputRelativePath)
     const progress = createProgressLogger(options.teamSuggestions || filesToAnalyze.length >= FILE_ANALYSIS_PROGRESS_INTERVAL)
     progress('Scanning %d files against CODEOWNERS rules...', filesToAnalyze.length)
     const report = buildReport(repoRoot, filesToAnalyze, codeownersDescriptors, options, progress)
@@ -141,7 +143,7 @@ async function main () {
  *   workingDir: string|null,
  *   includeUntracked: boolean,
  *   checkOnly: boolean,
- *   checkGlob: string,
+ *   checkGlobs: string[],
  *   teamSuggestions: boolean,
  *   teamSuggestionsWindowDays: number,
  *   teamSuggestionsTop: number,
@@ -164,7 +166,8 @@ function parseArgs (args) {
   let workingDirSetExplicitly = false
   let includeUntracked = false
   let checkOnly = false
-  let checkGlob = '**'
+  /** @type {string[]} */
+  let checkGlobs = []
   let teamSuggestions = false
   let teamSuggestionsWindowDays = TEAM_SUGGESTIONS_DEFAULT_WINDOW_DAYS
   let teamSuggestionsTop = TEAM_SUGGESTIONS_DEFAULT_TOP
@@ -317,18 +320,19 @@ function parseArgs (args) {
       continue
     }
 
-    if (arg === '--check') {
+    if (arg === '--ci') {
       checkOnly = true
-      if (args[index + 1] && !args[index + 1].startsWith('-')) {
-        checkGlob = args[index + 1]
-        index++
-      }
       continue
     }
 
-    if (arg.startsWith('--check=')) {
-      checkOnly = true
-      checkGlob = arg.slice('--check='.length)
+    if (arg === '--glob' || arg === '-g') {
+      checkGlobs.push(parseGlobOption(args[index + 1], '--glob'))
+      index++
+      continue
+    }
+
+    if (arg.startsWith('--glob=')) {
+      checkGlobs.push(parseGlobOption(arg.slice('--glob='.length), '--glob'))
       continue
     }
 
@@ -373,10 +377,6 @@ function parseArgs (args) {
     throw new Error('Missing value for --working-dir.')
   }
 
-  if (!help && checkOnly && !checkGlob) {
-    throw new Error('Missing value for --check.')
-  }
-
   if (!help && teamSuggestionsWindowDays < 1) {
     throw new Error('--team-suggestions-window-days must be >= 1.')
   }
@@ -406,13 +406,17 @@ function parseArgs (args) {
       .map(normalizeTeamIgnoreToken)
       .filter(Boolean)
   )
+  checkGlobs = dedupeStrings(checkGlobs)
+  if (checkGlobs.length === 0) {
+    checkGlobs = ['**']
+  }
 
   return {
     outputPath,
     workingDir,
     includeUntracked,
     checkOnly,
-    checkGlob,
+    checkGlobs,
     teamSuggestions,
     teamSuggestionsWindowDays,
     teamSuggestionsTop,
@@ -437,7 +441,8 @@ function printUsage () {
     ['--output-dir <dir>', 'Output directory for the generated HTML report'],
     ['-C, --working-dir <dir>', 'Run git commands from this directory (alias: --cwd)'],
     ['--include-untracked', 'Include untracked files in the analysis'],
-    ['--check[=<glob>]', 'CLI-only ownership check (default glob: **)'],
+    ['--ci', 'CI ownership check mode (no report; exits non-zero on uncovered files)'],
+    ['-g, --glob <pattern>', 'Repeatable file filter for report/check scope (default: **)'],
     ['--team-suggestions', 'Suggest @org/team for uncovered directories'],
     ['--team-suggestions-window-days <days>', 'Git history lookback window for suggestions (default: ' + TEAM_SUGGESTIONS_DEFAULT_WINDOW_DAYS + ')'],
     ['--team-suggestions-top <n>', 'Top team suggestions to keep per directory (default: ' + TEAM_SUGGESTIONS_DEFAULT_TOP + ')'],
@@ -502,6 +507,23 @@ function parseNumberOption (value, optionName) {
     throw new Error('Invalid numeric value for ' + optionName + ': ' + JSON.stringify(value))
   }
   return parsed
+}
+
+/**
+ * Parse and validate a glob option.
+ * @param {string|undefined} value
+ * @param {string} optionName
+ * @returns {string}
+ */
+function parseGlobOption (value, optionName) {
+  if (!value) {
+    throw new Error('Missing value for ' + optionName + '.')
+  }
+  const normalized = String(value).trim()
+  if (!normalized) {
+    throw new Error('Missing value for ' + optionName + '.')
+  }
+  return normalized
 }
 
 /**
@@ -589,21 +611,22 @@ function openReportInBrowser (target) {
  * }[]} codeownersDescriptors
  * @param {{
  *   includeUntracked: boolean,
- *   checkGlob: string
+ *   checkGlobs: string[]
  * }} options
  * @returns {void}
  */
 function runOwnershipCheck (repoRoot, files, codeownersDescriptors, options) {
-  const checkGlobMatcher = createCliGlobMatcher(options.checkGlob)
-  const filesToAnalyze = files.filter(filePath => checkGlobMatcher(filePath))
-  const progress = createProgressLogger(filesToAnalyze.length >= FILE_ANALYSIS_PROGRESS_INTERVAL)
-  progress('Running --check on %d files...', filesToAnalyze.length)
-  const report = buildReport(repoRoot, filesToAnalyze, codeownersDescriptors, options, progress)
+  const progress = createProgressLogger(files.length >= FILE_ANALYSIS_PROGRESS_INTERVAL)
+  progress('Running --ci on %d files...', files.length)
+  const report = buildReport(repoRoot, files, codeownersDescriptors, options, progress)
+  const globListLabel = options.checkGlobs.length === 1
+    ? JSON.stringify(options.checkGlobs[0])
+    : JSON.stringify(options.checkGlobs)
 
   if (report.unownedFiles.length > 0) {
     console.error(
-      'CODEOWNERS check failed for glob %s (%d analyzed files, %d unowned):',
-      JSON.stringify(options.checkGlob),
+      'CODEOWNERS check failed for globs %s (%d analyzed files, %d unowned):',
+      globListLabel,
       report.totals.files,
       report.totals.unowned
     )
@@ -615,8 +638,8 @@ function runOwnershipCheck (repoRoot, files, codeownersDescriptors, options) {
   }
 
   console.log(
-    'CODEOWNERS check passed for glob %s (%d analyzed files, %d unowned).',
-    JSON.stringify(options.checkGlob),
+    'CODEOWNERS check passed for globs %s (%d analyzed files, %d unowned).',
+    globListLabel,
     report.totals.files,
     report.totals.unowned
   )
@@ -642,12 +665,23 @@ function formatCommandError (error) {
 
 /**
  * Build a file matcher for CLI check globs.
- * @param {string} pattern
+ * @param {string[]} patterns
  * @returns {(filePath: string) => boolean}
  */
-function createCliGlobMatcher (pattern) {
-  const matches = createPatternMatcher(pattern)
-  return (filePath) => matches(filePath, filePath)
+function createCliGlobMatcher (patterns) {
+  const matchers = patterns.map(pattern => createPatternMatcher(pattern))
+  return (filePath) => matchers.some(matches => matches(filePath, filePath))
+}
+
+/**
+ * Filter file paths by the configured CLI glob set.
+ * @param {string[]} files
+ * @param {string[]} patterns
+ * @returns {string[]}
+ */
+function filterFilesByCliGlobs (files, patterns) {
+  const matcher = createCliGlobMatcher(patterns)
+  return files.filter(filePath => matcher(filePath))
 }
 
 /**
