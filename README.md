@@ -24,7 +24,6 @@ See how ownership coverage looks in practice with [this interactive report](http
 
 - Interactive HTML report with no build step
 - Coverage summary: total files, owned, unowned, and percentage
-- Top-level hotspot view to prioritize high-impact gaps
 - Directory explorer with filtering, sorting, and drill-down
 - Full unowned file list with scope and text filtering
 - Team ownership explorer with quick team chips and owned-file filtering
@@ -64,7 +63,7 @@ By default, the tool:
 - writes the report to a temporary path
 - prompts you to press Enter before opening the report in your default browser
 
-When standard input is non-interactive (no TTY), the command automatically behaves as if
+When standard input is non-interactive (no TTY - e.g. a CI environemnt), the command automatically behaves as if
 `--no-open --list-unowned --fail-on-unowned` were specified:
 - it never prompts to open a browser
 - it prints all unowned file paths to stdout
@@ -212,7 +211,6 @@ ZenBin currently rejects request payloads around 1 MiB and larger. Very large re
 The generated page includes:
 
 - repository-level ownership metrics and coverage bar
-- top-level hotspots for missing ownership
 - scoped directory table with coverage bars
 - searchable list of unowned files
 - team ownership explorer for filtering files by `@org/team`
