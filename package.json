@@ -7,7 +7,8 @@
     "codeowners-audit": "report.js"
   },
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "update-example": "node report.js nodejs/node --no-open -o example.html"
   },
   "repository": {
     "type": "git",
