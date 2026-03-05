@@ -581,6 +581,23 @@ test('--include-untracked adds untracked files to analysis', (t) => {
   assert.ok(withFlagData.unownedFiles.includes('new-untracked-file.txt'))
 })
 
+test('progress output is suppressed by default', (t) => {
+  const repoDir = createRepo(t)
+  const result = runCli(['--team-suggestions', '--output', 'default-no-progress.html'], { cwd: repoDir })
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.doesNotMatch(result.stdout, /\[progress \+/)
+  assert.doesNotMatch(result.stderr, /\[progress \+/)
+})
+
+test('--verbose enables verbose progress output', (t) => {
+  const repoDir = createRepo(t)
+  const result = runCli(['--verbose', '--team-suggestions', '--output', 'verbose-progress.html'], { cwd: repoDir })
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /\[progress \+/)
+})
+
 test('--ci exits non-zero when unowned files exist and skips report generation', (t) => {
   const repoDir = createRepo(t, {
     trackedFiles: {
@@ -764,6 +781,7 @@ test('--help prints usage without failing', (t) => {
   assert.match(result.stdout, /--team-suggestions/)
   assert.match(result.stdout, /--team-suggestions-ignore-teams/)
   assert.match(result.stdout, /--github-token/)
+  assert.match(result.stdout, /--verbose/)
   assert.doesNotMatch(result.stdout, /--github-token-env/)
   assert.match(result.stdout, /--version/)
   assert.match(result.stdout, /  -o, --output <path> {6}Output HTML file path/)

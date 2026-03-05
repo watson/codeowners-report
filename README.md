@@ -71,6 +71,7 @@ For CI checks where you do not want an HTML report, use `--ci`.
 | `-g, --glob <pattern>` | Repeatable file filter for report/check scope. Defaults to all files via `**` when omitted |
 | `--upload` | Upload report to ZenBin and print a public URL (small reports only) |
 | `--no-open` | Do not open the report automatically |
+| `--verbose` | Enable verbose progress output |
 | `-h, --help` | Show help |
 | `-v, --version` | Show version |
 

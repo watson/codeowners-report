@@ -72,7 +72,9 @@ async function main () {
     const outputAbsolutePath = path.resolve(repoRoot, options.outputPath)
     const outputRelativePath = toPosixPath(path.relative(repoRoot, outputAbsolutePath))
     const filesToAnalyze = scopeFilteredFiles.filter(filePath => filePath !== outputRelativePath)
-    const progress = createProgressLogger(options.teamSuggestions || filesToAnalyze.length >= FILE_ANALYSIS_PROGRESS_INTERVAL)
+    const progress = createProgressLogger(
+      options.verbose && (options.teamSuggestions || filesToAnalyze.length >= FILE_ANALYSIS_PROGRESS_INTERVAL)
+    )
     progress('Scanning %d files against CODEOWNERS rules...', filesToAnalyze.length)
     const report = buildReport(repoRoot, filesToAnalyze, codeownersDescriptors, options, progress)
     progress(
@@ -152,6 +154,7 @@ async function main () {
  *   githubApiBaseUrl: string,
  *   upload: boolean,
  *   open: boolean,
+ *   verbose: boolean,
  *   help: boolean,
  *   version: boolean
  * }}
@@ -178,6 +181,7 @@ function parseArgs (args) {
   let githubApiBaseUrl = GITHUB_API_BASE_URL
   let upload = false
   let open = true
+  let verbose = false
   let help = false
   let version = false
 
@@ -336,6 +340,11 @@ function parseArgs (args) {
       continue
     }
 
+    if (arg === '--verbose') {
+      verbose = true
+      continue
+    }
+
     if (arg === '--help' || arg === '-h') {
       help = true
       continue
@@ -416,6 +425,7 @@ function parseArgs (args) {
     githubApiBaseUrl,
     upload,
     open,
+    verbose,
     help,
     version,
   }
@@ -443,6 +453,7 @@ function printUsage () {
     ['--github-api-base-url <url>', 'GitHub API base URL (default: ' + GITHUB_API_BASE_URL + ')'],
     ['--upload', 'Upload to ' + UPLOAD_PROVIDER + ' and print a public URL'],
     ['--no-open', 'Do not open the report in your browser'],
+    ['--verbose', 'Enable verbose progress output'],
     ['-h, --help', 'Show this help'],
     ['-v, --version', 'Show version'],
   ]
@@ -602,12 +613,13 @@ function openReportInBrowser (target) {
  * }[]} codeownersDescriptors
  * @param {{
  *   includeUntracked: boolean,
- *   checkGlobs: string[]
+ *   checkGlobs: string[],
+ *   verbose: boolean
  * }} options
  * @returns {void}
  */
 function runOwnershipCheck (repoRoot, files, codeownersDescriptors, options) {
-  const progress = createProgressLogger(files.length >= FILE_ANALYSIS_PROGRESS_INTERVAL)
+  const progress = createProgressLogger(options.verbose && files.length >= FILE_ANALYSIS_PROGRESS_INTERVAL)
   progress('Running --ci on %d files...', files.length)
   const report = buildReport(repoRoot, files, codeownersDescriptors, options, progress)
   const globListLabel = options.checkGlobs.length === 1
