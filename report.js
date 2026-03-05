@@ -679,6 +679,10 @@ function deriveDisplayNameFromUrl (url) {
 
   try {
     const parsed = new URL(url)
+    if (parsed.protocol === 'file:') {
+      const base = path.posix.basename(parsed.pathname).replace(/\.git$/i, '')
+      return base || url
+    }
     const segments = parsed.pathname.replaceAll(/^\/+|\/+$/g, '').split('/')
     if (segments.length >= 2) {
       return `${segments[0]}/${segments[1].replace(/\.git$/i, '')}`

@@ -1134,7 +1134,7 @@ function createBareRemoteRepo (t, options = {}) {
   const srcDir = createRepo(t, options)
   commitStaged(srcDir, 'initial commit', 0, 'Test User', 'test@example.com')
 
-  const bareDir = mkdtempSync(path.join(tmpdir(), 'codeowners-audit-bare-'))
+  const bareDir = mkdtempSync(path.join(tmpdir(), 'cotest-bare-'))
   t.after(() => {
     rmSync(bareDir, { recursive: true, force: true })
   })
