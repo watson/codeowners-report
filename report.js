@@ -1631,7 +1631,7 @@ function toPercent (value, total) {
  * @returns {string}
  */
 function renderHtml (report) {
-  const serializedReport = JSON.stringify(report).replaceAll('<', String.raw`\u003c`)
+  const serializedReport = JSON.stringify(report, null, 2).replaceAll('<', String.raw`\u003c`)
 
   return REPORT_HTML_TEMPLATE
     .replace(REPORT_DATA_PLACEHOLDER, serializedReport)
