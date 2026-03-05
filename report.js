@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import readline from 'node:readline'
 import { createProgressLogger } from './lib/progress.js'
 import {
   collectDirectoryTeamSuggestions,
@@ -46,6 +47,19 @@ async function main () {
     if (options.help) {
       printUsage()
       return
+    }
+
+    if (!isInteractiveStdin() && !options.checkOnlyExplicitlyRequested) {
+      if (options.nonInteractiveIncompatibleFlags.length > 0) {
+        throw new Error(
+          'Standard input is non-interactive, so this command defaults to --ci mode. Remove these report-only options: '
+          + options.nonInteractiveIncompatibleFlags.join(', ')
+        )
+      }
+
+      options.checkOnly = true
+      options.open = false
+      console.log('Standard input is non-interactive; defaulting to --ci mode.')
     }
 
     const commandWorkingDir = options.workingDir ? path.resolve(options.workingDir) : process.cwd()
@@ -119,14 +133,17 @@ async function main () {
     }
 
     if (options.open) {
-      try {
-        openReportInBrowser(reportLocation)
-        console.log('Opened report in browser: %s', reportLocation)
-      } catch (error) {
-        console.warn(
-          'Could not open report in browser (%s). Re-run with --no-open to disable automatic opening.',
-          formatCommandError(error)
-        )
+      const shouldOpen = await promptForReportOpen(reportLocation)
+      if (shouldOpen) {
+        try {
+          openReportInBrowser(reportLocation)
+          console.log('Opened report in browser: %s', reportLocation)
+        } catch (error) {
+          console.warn(
+            'Could not open report in browser (%s). Re-run with --no-open to disable the open prompt.',
+            formatCommandError(error)
+          )
+        }
       }
     }
   } catch (error) {
@@ -144,6 +161,8 @@ async function main () {
  *   workingDir: string|null,
  *   includeUntracked: boolean,
  *   checkOnly: boolean,
+ *   checkOnlyExplicitlyRequested: boolean,
+ *   nonInteractiveIncompatibleFlags: string[],
  *   checkGlobs: string[],
  *   teamSuggestions: boolean,
  *   teamSuggestionsWindowDays: number,
@@ -168,6 +187,7 @@ function parseArgs (args) {
   let workingDirSetExplicitly = false
   let includeUntracked = false
   let checkOnly = false
+  let checkOnlyExplicitlyRequested = false
   /** @type {string[]} */
   let checkGlobs = []
   let teamSuggestions = false
@@ -316,6 +336,7 @@ function parseArgs (args) {
 
     if (arg === '--ci') {
       checkOnly = true
+      checkOnlyExplicitlyRequested = true
       continue
     }
 
@@ -415,6 +436,12 @@ function parseArgs (args) {
     workingDir,
     includeUntracked,
     checkOnly,
+    checkOnlyExplicitlyRequested,
+    nonInteractiveIncompatibleFlags: getNonInteractiveIncompatibleFlags({
+      outputPathSetExplicitly,
+      outputDirSetExplicitly,
+      upload,
+    }),
     checkGlobs,
     teamSuggestions,
     teamSuggestionsWindowDays,
@@ -429,6 +456,78 @@ function parseArgs (args) {
     help,
     version,
   }
+}
+
+/**
+ * Determine whether stdin is interactive.
+ * The env override exists to keep automated tests deterministic.
+ * @returns {boolean}
+ */
+function isInteractiveStdin () {
+  if (process.env.CODEOWNERS_AUDIT_ASSUME_TTY === '1') return true
+  if (process.env.CODEOWNERS_AUDIT_ASSUME_TTY === '0') return false
+  return Boolean(process.stdin.isTTY)
+}
+
+/**
+ * Return CLI flags that are incompatible with non-interactive forced --ci mode.
+ * @param {{
+ *   outputPathSetExplicitly: boolean,
+ *   outputDirSetExplicitly: boolean,
+ *   upload: boolean
+ * }} options
+ * @returns {string[]}
+ */
+function getNonInteractiveIncompatibleFlags (options) {
+  /** @type {string[]} */
+  const flags = []
+  if (options.outputPathSetExplicitly) flags.push('--output')
+  if (options.outputDirSetExplicitly) flags.push('--output-dir')
+  if (options.upload) flags.push('--upload')
+  return flags
+}
+
+/**
+ * Prompt for permission before opening the report in a browser.
+ * @param {string} target
+ * @returns {Promise<boolean>}
+ */
+async function promptForReportOpen (target) {
+  if (!isInteractiveStdin()) return false
+
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  })
+
+  return await new Promise((resolve) => {
+    let settled = false
+    const settle = (value) => {
+      if (settled) return
+      settled = true
+      rl.close()
+      resolve(value)
+    }
+
+    rl.on('SIGINT', () => {
+      process.stdout.write('\n')
+      console.log('Skipped opening report in browser.')
+      settle(false)
+    })
+
+    rl.question(
+      `Report ready at ${target}\nPress Enter to open it in your browser (Ctrl+C to cancel): `,
+      (answer) => {
+        if (answer.trim() === '') {
+          settle(true)
+          return
+        }
+
+        console.log('Skipped opening report in browser.')
+        settle(false)
+      }
+    )
+  })
 }
 
 /**
@@ -452,7 +551,7 @@ function printUsage () {
     ['--github-token <token>', 'GitHub token for team lookups (falls back to GITHUB_TOKEN, then GH_TOKEN)'],
     ['--github-api-base-url <url>', 'GitHub API base URL (default: ' + GITHUB_API_BASE_URL + ')'],
     ['--upload', 'Upload to ' + UPLOAD_PROVIDER + ' and print a public URL'],
-    ['--no-open', 'Do not open the report in your browser'],
+    ['--no-open', 'Do not prompt to open the report in your browser'],
     ['--verbose', 'Enable verbose progress output'],
     ['-h, --help', 'Show this help'],
     ['-v, --version', 'Show version'],

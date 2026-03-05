@@ -55,9 +55,10 @@ By default, the tool:
 
 - analyzes tracked files from `git ls-files`
 - writes the report to a temporary path
-- opens the report in your default browser
+- prompts you to press Enter before opening the report in your default browser
 
-For CI checks where you do not want an HTML report, use `--ci`.
+When standard input is non-interactive (no TTY), the command defaults to `--ci` mode automatically and never opens a browser.
+In that non-interactive mode, report-only flags such as `--output`, `--output-dir`, and `--upload` are rejected unless you explicitly choose `--ci`.
 
 ### Options
 
@@ -77,20 +78,20 @@ For CI checks where you do not want an HTML report, use `--ci`.
 | `--github-token <token>` | GitHub token for team lookups (falls back to `GITHUB_TOKEN`, then `GH_TOKEN`) |
 | `--github-api-base-url <url>` | GitHub API base URL (default: `https://api.github.com`) |
 | `--upload` | Upload to zenbin and print a public URL |
-| `--no-open` | Do not open the report in your browser |
+| `--no-open` | Do not prompt to open the report in your browser |
 | `--verbose` | Enable verbose progress output |
 | `-h, --help` | Show this help |
 | `-v, --version` | Show version |
 
 ## Examples
 
-Generate report and open it automatically:
+Generate report and open it after pressing Enter:
 
 ```bash
 codeowners-audit
 ```
 
-Upload report and open the shared URL:
+Upload report and open the shared URL after pressing Enter:
 
 ```bash
 codeowners-audit --upload

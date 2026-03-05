@@ -21,15 +21,21 @@ function parseOutputPathFromStdout (stdout) {
   return match[1]
 }
 
+function buildCliEnv (options = {}) {
+  return {
+    ...process.env,
+    CODEOWNERS_AUDIT_ASSUME_TTY: options.assumeTty === false ? '0' : '1',
+    ...(options.env || {}),
+  }
+}
+
 function runCli (args, options = {}) {
   const cliArgs = options.noOpen === false ? args : ['--no-open', ...args]
   return spawnSync(process.execPath, [cliPath, ...cliArgs], {
     cwd: options.cwd,
-    env: {
-      ...process.env,
-      ...(options.env || {}),
-    },
+    env: buildCliEnv(options),
     encoding: 'utf8',
+    input: options.stdinData,
   })
 }
 
@@ -38,15 +44,13 @@ function runCliAsync (args, options = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [cliPath, ...cliArgs], {
       cwd: options.cwd,
-      env: {
-        ...process.env,
-        ...(options.env || {}),
-      },
-      stdio: ['ignore', 'pipe', 'pipe'],
+      env: buildCliEnv(options),
+      stdio: ['pipe', 'pipe', 'pipe'],
     })
 
     let stdout = ''
     let stderr = ''
+    child.stdin.end(options.stdinData === undefined ? '' : options.stdinData)
     child.stdout.on('data', (chunk) => {
       stdout += String(chunk)
     })
@@ -614,6 +618,31 @@ test('--ci exits non-zero when unowned files exist and skips report generation',
   assert.match(result.stderr, /src\/unowned\.js/)
 })
 
+test('non-interactive stdin defaults to --ci mode', (t) => {
+  const repoDir = createRepo(t)
+  const result = runCli([], {
+    cwd: repoDir,
+    assumeTty: false,
+  })
+
+  assert.equal(result.status, 1)
+  assert.match(result.stdout, /Standard input is non-interactive; defaulting to --ci mode/)
+  assert.doesNotMatch(result.stdout, /Wrote CODEOWNERS gap report/)
+  assert.match(result.stderr, /CODEOWNERS check failed/)
+})
+
+test('non-interactive stdin rejects report-only flags unless --ci is explicit', (t) => {
+  const repoDir = createRepo(t)
+  const result = runCli(['--upload'], {
+    cwd: repoDir,
+    assumeTty: false,
+  })
+
+  assert.equal(result.status, 2)
+  assert.match(result.stderr, /Standard input is non-interactive, so this command defaults to --ci mode/)
+  assert.match(result.stderr, /--upload/)
+})
+
 test('--glob filters files before ownership validation in --ci mode', (t) => {
   const repoDir = createRepo(t)
 
@@ -805,7 +834,7 @@ test('--version prints package version without failing', (t) => {
   assert.equal(shortResult.stdout.trim(), packageVersion)
 })
 
-test('opens local report in browser by default', (t) => {
+test('opens local report in browser after Enter confirmation', (t) => {
   const openerCommand = getOpenCommandName()
   if (!openerCommand) {
     t.skip('automatic browser opening test is not supported on win32')
@@ -832,6 +861,7 @@ test('opens local report in browser by default', (t) => {
   const result = runCli([], {
     cwd: repoDir,
     noOpen: false,
+    stdinData: '\n',
     env: {
       PATH: fakeBinDir + path.delimiter + process.env.PATH,
     },
@@ -840,7 +870,47 @@ test('opens local report in browser by default', (t) => {
   assert.equal(result.status, 0, result.stderr)
   assert.ok(existsSync(openLogPath), 'fake browser opener should be called')
   assert.match(readFileSync(openLogPath, 'utf8').trim(), /codeowners-gaps-report\.html$/)
+  assert.match(result.stdout, /Press Enter to open it in your browser/)
   assert.match(result.stdout, /Opened report in browser/)
+})
+
+test('does not open local report when open confirmation is declined', (t) => {
+  const openerCommand = getOpenCommandName()
+  if (!openerCommand) {
+    t.skip('automatic browser opening test is not supported on win32')
+    return
+  }
+
+  const repoDir = createRepo(t)
+  const fakeBinDir = path.join(repoDir, 'fake-bin')
+  const fakeOpenPath = path.join(fakeBinDir, openerCommand)
+  const openLogPath = path.join(repoDir, 'fake-open-target.txt')
+  mkdirSync(fakeBinDir, { recursive: true })
+  writeFileSync(
+    fakeOpenPath,
+    [
+      '#!/usr/bin/env node',
+      'const fs = require("node:fs")',
+      `fs.writeFileSync(${JSON.stringify(openLogPath)}, process.argv.slice(2).join("\\n"), "utf8")`,
+      '',
+    ].join('\n'),
+    'utf8'
+  )
+  chmodSync(fakeOpenPath, 0o755)
+
+  const result = runCli([], {
+    cwd: repoDir,
+    noOpen: false,
+    stdinData: 'no\n',
+    env: {
+      PATH: fakeBinDir + path.delimiter + process.env.PATH,
+    },
+  })
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.equal(existsSync(openLogPath), false, 'fake browser opener should not be called')
+  assert.match(result.stdout, /Press Enter to open it in your browser/)
+  assert.match(result.stdout, /Skipped opening report in browser/)
 })
 
 test('--upload uses curl response URL in output', (t) => {
@@ -876,7 +946,7 @@ test('--upload uses curl response URL in output', (t) => {
   assert.match(readFileSync(uploadLogPath, 'utf8'), /"html":/)
 })
 
-test('--upload opens uploaded URL in browser by default', (t) => {
+test('--upload opens uploaded URL in browser after Enter confirmation', (t) => {
   const openerCommand = getOpenCommandName()
   if (!openerCommand) {
     t.skip('automatic browser opening test is not supported on win32')
@@ -918,6 +988,7 @@ test('--upload opens uploaded URL in browser by default', (t) => {
   const result = runCli(['--upload'], {
     cwd: repoDir,
     noOpen: false,
+    stdinData: '\n',
     env: {
       PATH: fakeBinDir + path.delimiter + process.env.PATH,
     },
@@ -926,6 +997,7 @@ test('--upload opens uploaded URL in browser by default', (t) => {
   assert.equal(result.status, 0, result.stderr)
   assert.ok(existsSync(uploadLogPath), 'fake curl should receive payload via stdin')
   assert.equal(readFileSync(openLogPath, 'utf8').trim(), 'https://zenbin.org/p/test-upload-open')
+  assert.match(result.stdout, /Press Enter to open it in your browser/)
   assert.match(result.stdout, /Opened report in browser: https:\/\/zenbin\.org\/p\/test-upload-open/)
 })
 
