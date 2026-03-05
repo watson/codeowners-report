@@ -891,7 +891,7 @@ test('--help prints usage without failing', (t) => {
   const result = runCli(['--help'], { cwd: tempDir })
 
   assert.equal(result.status, 0, result.stderr)
-  assert.match(result.stdout, /Usage: codeowners-audit \[options\]/)
+  assert.match(result.stdout, /Usage: codeowners-audit \[repo-or-path\] \[options\]/)
   assert.match(result.stdout, /--include-untracked/)
   assert.match(result.stdout, /--output-dir/)
   assert.match(result.stdout, /--cwd/)
@@ -1126,6 +1126,125 @@ test('--upload fails with a clear message when the report is too large', (t) => 
   assert.equal(result.status, 2)
   assert.match(result.stderr, /report is too large for ZenBin/)
   assert.equal(existsSync(uploadLogPath), false, 'curl should not be called for oversized payloads')
+})
+
+// --- Remote repo (first positional argument) tests ---
+
+function createBareRemoteRepo (t, options = {}) {
+  const srcDir = createRepo(t, options)
+  commitStaged(srcDir, 'initial commit', 0, 'Test User', 'test@example.com')
+
+  const bareDir = mkdtempSync(path.join(tmpdir(), 'codeowners-audit-bare-'))
+  t.after(() => {
+    rmSync(bareDir, { recursive: true, force: true })
+  })
+
+  execFileSync('git', ['clone', '--bare', srcDir, bareDir], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+
+  return `file://${bareDir}`
+}
+
+test('first positional as remote URL clones and produces a report', (t) => {
+  const remoteUrl = createBareRemoteRepo(t)
+
+  const outputDir = mkdtempSync(path.join(tmpdir(), 'codeowners-audit-remote-out-'))
+  t.after(() => {
+    rmSync(outputDir, { recursive: true, force: true })
+  })
+  const outputFile = path.join(outputDir, 'remote-report.html')
+
+  const result = runCli([remoteUrl, '--output', outputFile])
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /Cloning/)
+  assert.ok(existsSync(outputFile), 'report should exist at the specified output path')
+
+  const html = readFileSync(outputFile, 'utf8')
+  assert.match(html, /<title>CODEOWNERS Gap Report<\/title>/)
+
+  const reportData = parseReportDataFromHtml(html)
+  assert.doesNotMatch(reportData.repoName, /codeowners-audit-/, 'repoName should not be the temp clone directory name')
+})
+
+test('remote clone report uses owner/repo as the repo name for GitHub-like URLs', (t) => {
+  const remoteUrl = createBareRemoteRepo(t)
+
+  const outputDir = mkdtempSync(path.join(tmpdir(), 'codeowners-audit-name-out-'))
+  t.after(() => {
+    rmSync(outputDir, { recursive: true, force: true })
+  })
+  const outputFile = path.join(outputDir, 'name-test.html')
+
+  const result = runCli([remoteUrl, '--output', outputFile])
+
+  assert.equal(result.status, 0, result.stderr)
+  const html = readFileSync(outputFile, 'utf8')
+  const reportData = parseReportDataFromHtml(html)
+  assert.doesNotMatch(reportData.repoName, /codeowners-audit-/, 'repoName should not contain the temp dir prefix')
+})
+
+test('first positional as remote URL resolves --output relative to cwd', (t) => {
+  const remoteUrl = createBareRemoteRepo(t)
+
+  const workDir = mkdtempSync(path.join(tmpdir(), 'codeowners-audit-remote-cwd-'))
+  t.after(() => {
+    rmSync(workDir, { recursive: true, force: true })
+  })
+
+  const result = runCli([remoteUrl, '--output', 'my-report.html'], { cwd: workDir })
+
+  assert.equal(result.status, 0, result.stderr)
+  const expectedPath = path.join(workDir, 'my-report.html')
+  assert.ok(existsSync(expectedPath), `report should be written at ${expectedPath}`)
+})
+
+test('first positional as remote URL cleans up the temp clone', (t) => {
+  const remoteUrl = createBareRemoteRepo(t)
+
+  const result = runCli([remoteUrl])
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /Cloning/)
+})
+
+test('first positional as local path works like --cwd', (t) => {
+  const repoDir = createRepo(t)
+
+  const outputDir = mkdtempSync(path.join(tmpdir(), 'codeowners-audit-localpath-out-'))
+  t.after(() => {
+    rmSync(outputDir, { recursive: true, force: true })
+  })
+  const outputFile = path.join(outputDir, 'local-report.html')
+
+  const result = runCli([repoDir, '--output', outputFile])
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.ok(existsSync(outputFile), 'report should exist')
+})
+
+test('first positional and --cwd cannot both be specified', (t) => {
+  const repoDir = createRepo(t)
+
+  const result = runCli([repoDir, '--cwd', repoDir])
+
+  assert.equal(result.status, 2)
+  assert.match(result.stderr, /Cannot specify both/)
+})
+
+test('first positional with invalid remote URL fails with a clear error', (t) => {
+  const result = runCli(['file:///nonexistent/repo/path'])
+
+  assert.equal(result.status, 2)
+  assert.match(result.stderr, /Failed to clone repository/)
+})
+
+test('GitHub shorthand is detected as a remote URL', (t) => {
+  const result = runCli(['nonexistent-owner-abc/nonexistent-repo-xyz'])
+
+  assert.equal(result.status, 2)
+  assert.match(result.stdout, /Cloning https:\/\/github\.com\/nonexistent-owner-abc\/nonexistent-repo-xyz\.git/)
 })
 
 test('unknown and invalid options fail with a useful error', (t) => {

@@ -2,7 +2,7 @@
 /* eslint-disable no-console */
 
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import readline from 'node:readline'
@@ -38,6 +38,7 @@ main()
  * @returns {Promise<void>}
  */
 async function main () {
+  let clonedTempDir = null
   try {
     const options = parseArgs(process.argv.slice(2))
     const interactiveStdin = isInteractiveStdin()
@@ -66,7 +67,50 @@ async function main () {
       options.listUnowned = true
     }
 
-    const commandWorkingDir = options.workingDir ? path.resolve(options.workingDir) : process.cwd()
+    const remoteRepoUrl = options.repoOrPath !== undefined && isRepoUrl(options.repoOrPath)
+      ? options.repoOrPath
+      : undefined
+
+    if (remoteRepoUrl !== undefined) {
+      const cloneUrl = normalizeRepoUrl(remoteRepoUrl)
+      const shallow = !options.teamSuggestions
+
+      if (!shallow) {
+        console.log('Full repository clone required for --suggest-teams (this may take longer for large repositories).')
+        if (interactiveStdin) {
+          const confirmed = await promptForFullClone(cloneUrl)
+          if (!confirmed) {
+            console.log('Clone aborted.')
+            return
+          }
+        }
+      }
+
+      clonedTempDir = mkdtempSync(path.join(tmpdir(), 'codeowners-audit-'))
+      console.log('Cloning %s...', cloneUrl)
+      try {
+        const cloneArgs = shallow
+          ? ['clone', ...(options.verbose ? [] : ['--quiet']), '--depth', '1', cloneUrl, clonedTempDir]
+          : ['clone', ...(options.verbose ? [] : ['--quiet']), cloneUrl, clonedTempDir]
+        execFileSync('git', cloneArgs, {
+          stdio: ['ignore', 'ignore', options.verbose ? 'inherit' : 'pipe'],
+        })
+      } catch (cloneError) {
+        rmSync(clonedTempDir, { recursive: true, force: true })
+        clonedTempDir = null
+        throw new Error(`Failed to clone repository: ${cloneUrl}\n${formatCommandError(cloneError)}`)
+      }
+    }
+
+    let commandWorkingDir
+    if (clonedTempDir) {
+      commandWorkingDir = clonedTempDir
+    } else if (options.repoOrPath !== undefined) {
+      commandWorkingDir = path.resolve(options.repoOrPath)
+    } else {
+      commandWorkingDir = options.workingDir ? path.resolve(options.workingDir) : process.cwd()
+    }
+
     const repoRoot = runGitCommand(['rev-parse', '--show-toplevel'], commandWorkingDir).trim()
 
     const allRepoFiles = listRepoFiles(options.includeUntracked, repoRoot)
@@ -82,7 +126,9 @@ async function main () {
 
     const scopeFilteredFiles = filterFilesByCliGlobs(allRepoFiles, options.checkGlobs)
 
-    const outputAbsolutePath = path.resolve(repoRoot, options.outputPath)
+    const outputAbsolutePath = clonedTempDir
+      ? path.resolve(process.cwd(), options.outputPath)
+      : path.resolve(repoRoot, options.outputPath)
     const outputRelativePath = toPosixPath(path.relative(repoRoot, outputAbsolutePath))
     const filesToAnalyze = scopeFilteredFiles.filter(filePath => filePath !== outputRelativePath)
     const progress = createProgressLogger(
@@ -151,7 +197,15 @@ async function main () {
         }
       }
     }
+    if (clonedTempDir) {
+      rmSync(clonedTempDir, { recursive: true, force: true })
+      clonedTempDir = null
+    }
   } catch (error) {
+    if (clonedTempDir) {
+      rmSync(clonedTempDir, { recursive: true, force: true })
+      clonedTempDir = null
+    }
     console.error('Failed to generate CODEOWNERS gap report:')
     console.error(String(error && error.stack ? error.stack : error))
     process.exit(EXIT_CODE_RUNTIME_ERROR)
@@ -162,6 +216,7 @@ async function main () {
  * Parse command-line arguments.
  * @param {string[]} args
  * @returns {{
+ *   repoOrPath?: string,
  *   outputPath: string,
  *   workingDir: string|null,
  *   includeUntracked: boolean,
@@ -184,6 +239,8 @@ async function main () {
  * }}
  */
 function parseArgs (args) {
+  /** @type {string|undefined} */
+  let repoOrPath
   let outputPath = DEFAULT_OUTPUT_PATH
   let outputPathSetExplicitly = false
   let outputDir = null
@@ -391,6 +448,11 @@ function parseArgs (args) {
       continue
     }
 
+    if (!arg.startsWith('-') && repoOrPath === undefined) {
+      repoOrPath = arg
+      continue
+    }
+
     throw new Error(`Unknown argument: ${arg}`)
   }
 
@@ -410,6 +472,10 @@ function parseArgs (args) {
 
   if (!help && workingDirSetExplicitly && !workingDir) {
     throw new Error('Missing value for --cwd.')
+  }
+
+  if (!help && repoOrPath !== undefined && workingDirSetExplicitly) {
+    throw new Error('Cannot specify both a positional <repo-or-path> argument and --cwd.')
   }
 
   if (!help && teamSuggestionsWindowDays < 1) {
@@ -447,6 +513,7 @@ function parseArgs (args) {
   }
 
   return {
+    repoOrPath,
     outputPath,
     workingDir,
     includeUntracked,
@@ -524,6 +591,106 @@ async function promptForReportOpen (target) {
 }
 
 /**
+ * Prompt for confirmation before a full repository clone.
+ * @param {string} url
+ * @returns {Promise<boolean>}
+ */
+async function promptForFullClone (url) {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  })
+
+  return await new Promise((resolve) => {
+    let settled = false
+    const settle = (value) => {
+      if (settled) return
+      settled = true
+      rl.close()
+      resolve(value)
+    }
+
+    rl.on('SIGINT', () => {
+      process.stdout.write('\n')
+      settle(false)
+    })
+
+    rl.question(
+      `Proceed with full clone of ${url}? [y/N] `,
+      (answer) => {
+        settle(answer.trim().toLowerCase() === 'y')
+      }
+    )
+  })
+}
+
+/**
+ * Determine whether a value looks like a remote repository URL or shorthand
+ * rather than a local file path.
+ * @param {string} value
+ * @returns {boolean}
+ */
+function isRepoUrl (value) {
+  if (value.includes('://')) return true
+  if (value.startsWith('git@')) return true
+  if (/^[a-zA-Z0-9][a-zA-Z0-9-]*\/[a-zA-Z0-9._-]+$/.test(value)) return true
+  return false
+}
+
+/**
+ * Normalize a repo identifier to a URL suitable for `git clone`.
+ * Full URLs and SSH addresses are returned as-is.
+ * GitHub-style shorthand (owner/repo) is expanded to an HTTPS URL.
+ * @param {string} value
+ * @returns {string}
+ */
+function normalizeRepoUrl (value) {
+  if (value.includes('://') || value.startsWith('git@')) return value
+  return `https://github.com/${value}.git`
+}
+
+/**
+ * Resolve a human-friendly display name for a repository.
+ * Tries `git remote get-url origin` first and extracts "owner/repo" from it.
+ * Falls back to the directory basename when no origin remote is available.
+ * @param {string} repoRoot
+ * @returns {string}
+ */
+function resolveRepoDisplayName (repoRoot) {
+  try {
+    const remoteUrl = runGitCommand(['remote', 'get-url', 'origin'], repoRoot).trim()
+    if (remoteUrl) {
+      return deriveDisplayNameFromUrl(remoteUrl)
+    }
+  } catch {}
+  return path.basename(repoRoot)
+}
+
+/**
+ * Derive a human-friendly repository name from a remote URL.
+ * For GitHub/GitLab-style URLs, returns "owner/repo".
+ * Falls back to the URL itself for unrecognised formats.
+ * @param {string} url
+ * @returns {string}
+ */
+function deriveDisplayNameFromUrl (url) {
+  const sshMatch = url.match(/^git@[^:]+:([^/]+)\/(.+?)(?:\.git)?$/)
+  if (sshMatch) {
+    return `${sshMatch[1]}/${sshMatch[2]}`
+  }
+
+  try {
+    const parsed = new URL(url)
+    const segments = parsed.pathname.replaceAll(/^\/+|\/+$/g, '').split('/')
+    if (segments.length >= 2) {
+      return `${segments[0]}/${segments[1].replace(/\.git$/i, '')}`
+    }
+  } catch {}
+
+  return url
+}
+
+/**
  * Print command usage.
  * @returns {void}
  */
@@ -554,7 +721,10 @@ function printUsage () {
 
   console.log(
     [
-      'Usage: codeowners-audit [options]',
+      'Usage: codeowners-audit [repo-or-path] [options]',
+      '',
+      'Arguments:',
+      '  [repo-or-path]           Repository URL, GitHub shorthand (owner/repo), or path to a local directory (default: cwd)',
       '',
       'Options:',
       ...formatUsageOptions(optionRows),
@@ -1256,7 +1426,7 @@ function buildReport (repoRoot, files, codeownersDescriptors, options, progress 
     })
 
   return {
-    repoName: path.basename(repoRoot),
+    repoName: resolveRepoDisplayName(repoRoot),
     generatedAt: new Date().toISOString(),
     options: {
       includeUntracked: options.includeUntracked,

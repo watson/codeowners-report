@@ -48,11 +48,15 @@ codeowners-audit
 
 ## Usage
 
-Run this inside a Git repository:
-
 ```bash
-codeowners-audit [options]
+codeowners-audit [repo-or-path] [options]
 ```
+
+The first argument is optional and can be:
+
+- A **remote repository URL** (e.g. `https://github.com/owner/repo`) or **GitHub shorthand** (`owner/repo`) — the repo will be cloned into a temp directory, audited, and the clone removed automatically.
+- A **local directory path** (e.g. `~/code/my-repo`) — equivalent to `--cwd`.
+- **Omitted** — the current working directory is used.
 
 By default, the tool:
 
@@ -102,6 +106,12 @@ Generate report and open it after pressing Enter:
 codeowners-audit
 ```
 
+Audit a remote GitHub repository:
+
+```bash
+codeowners-audit watson/codeowners-audit
+```
+
 Upload report and open the shared URL after pressing Enter:
 
 ```bash
@@ -117,7 +127,7 @@ codeowners-audit --output codeowners-gaps-report.html --no-open
 Run against a repository from another directory:
 
 ```bash
-codeowners-audit --cwd ~/code/my-repo
+codeowners-audit ~/code/my-repo
 ```
 
 ## Using in CI
