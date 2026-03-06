@@ -71,6 +71,7 @@ function runCliAsync (args, options = {}) {
 function runGit (cwd, args, options = {}) {
   execFileSync('git', args, {
     cwd,
+    maxBuffer: 64 * 1024 * 1024,
     env: {
       ...process.env,
       ...(options.env || {}),
