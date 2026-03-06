@@ -251,6 +251,16 @@
       color: #67e8f9;
       font-weight: 600;
     }
+    .warning-owner-link {
+      color: inherit;
+      text-decoration: underline;
+      text-decoration-color: rgba(103, 232, 249, 0.45);
+      text-underline-offset: 2px;
+    }
+    .warning-owner-link:hover {
+      color: #a5f3fc;
+      text-decoration-color: rgba(165, 243, 252, 0.7);
+    }
     .warning-text {
       color: var(--muted);
     }
@@ -629,15 +639,64 @@
 
           const ownersSpan = document.createElement('span')
           ownersSpan.className = 'warning-owners'
-          ownersSpan.textContent = Array.isArray(warning.owners) && warning.owners.length > 0
-            ? warning.owners.join(', ')
-            : '(none)'
+          appendCodeownersOwnerList(ownersSpan, warning.owners)
           item.appendChild(ownersSpan)
 
           list.appendChild(item)
         }
 
         container.hidden = false
+      }
+
+      function appendCodeownersOwnerList (target, owners) {
+        target.textContent = ''
+        if (!Array.isArray(owners) || owners.length === 0) {
+          target.textContent = '(none)'
+          return
+        }
+
+        owners.forEach((owner, index) => {
+          if (index > 0) {
+            target.appendChild(document.createTextNode(', '))
+          }
+          target.appendChild(createCodeownersOwnerNode(owner))
+        })
+      }
+
+      function createCodeownersOwnerNode (owner) {
+        const label = typeof owner === 'string' ? owner.trim() : ''
+        const href = getCodeownersOwnerGithubUrl(label)
+        if (!href) {
+          return document.createTextNode(label || '(unknown)')
+        }
+
+        const link = document.createElement('a')
+        link.className = 'warning-owner-link'
+        link.href = href
+        link.target = '_blank'
+        link.rel = 'noopener noreferrer'
+        link.textContent = label
+        return link
+      }
+
+      function getCodeownersOwnerGithubUrl (owner) {
+        if (typeof owner !== 'string') return ''
+        const normalized = owner.trim()
+        if (!normalized.startsWith('@')) return ''
+
+        const segments = normalized.slice(1).split('/')
+        if (segments.some(segment => !segment)) return ''
+
+        if (segments.length === 1) {
+          return 'https://github.com/' + encodeURIComponent(segments[0])
+        }
+
+        if (segments.length === 2) {
+          return 'https://github.com/orgs/' + encodeURIComponent(segments[0]) +
+            '/teams/' + encodeURIComponent(segments[1])
+        }
+
+        return ''
       }
 
       function renderCodeownersDiscoveryWarnings (validationMeta) {
