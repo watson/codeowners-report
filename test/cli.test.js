@@ -143,11 +143,10 @@ function createRepo (t, options = {}) {
 }
 
 function addTrackedBulkFilesForStress (repoDir, minimumGitListBytes) {
-  const segmentA = 'a'.repeat(120)
-  const segmentB = 'b'.repeat(120)
-  const segmentC = 'c'.repeat(120)
-  const fileSuffix = 'd'.repeat(120)
-  const bulkRelativeDir = path.posix.join('bulk', segmentA, segmentB, segmentC)
+  const segmentA = 'a'.repeat(40)
+  const segmentB = 'b'.repeat(40)
+  const fileSuffix = 'c'.repeat(80)
+  const bulkRelativeDir = path.posix.join('bulk', segmentA, segmentB)
   const bulkAbsoluteDir = path.join(repoDir, bulkRelativeDir)
   mkdirSync(bulkAbsoluteDir, { recursive: true })
 
@@ -1091,12 +1090,29 @@ test('--upload opens uploaded URL in browser after Enter confirmation', async (t
   assert.match(result.stdout, /Opened report in browser: https:\/\/zenbin\.org\/p\/test-upload-open/)
 })
 
-test('--upload fails with a clear message when the report is too large', (t) => {
+test('--upload fails with a clear message when the report is too large', async (t) => {
   const repoDir = createRepo(t)
 
   addTrackedBulkFilesForStress(repoDir, ZENBIN_UPLOAD_STRESS_TARGET_BYTES)
 
-  const result = runCli(['--upload'], { cwd: repoDir })
+  const server = createServer((_req, res) => {
+    res.statusCode = 500
+    res.end('should not be called')
+  })
+  await /** @type {Promise<void>} */ (
+    new Promise((resolve) => { server.listen(0, '127.0.0.1', resolve) })
+  )
+  t.after(() => { server.close() })
+  const address = server.address()
+  assert.ok(address && typeof address === 'object')
+  const apiBaseUrl = `http://127.0.0.1:${address.port}`
+
+  const result = await runCliAsync(['--upload'], {
+    cwd: repoDir,
+    env: {
+      CODEOWNERS_AUDIT_ZENBIN_BASE_URL: apiBaseUrl,
+    },
+  })
 
   assert.equal(result.status, 2)
   assert.match(result.stderr, /report is too large for ZenBin/)
