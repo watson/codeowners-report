@@ -7,6 +7,8 @@
     "codeowners-audit": "report.js"
   },
   "scripts": {
+    "lint:commit": "commitlint --last --verbose",
+    "lint:commit:message": "commitlint --verbose",
     "test": "node --test",
     "update-example": "node report.js nodejs/node --no-open -o example.html"
   },
