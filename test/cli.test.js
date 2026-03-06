@@ -1159,6 +1159,7 @@ test('--help prints usage without failing', (t) => {
   assert.match(result.stdout, /--include-untracked/)
   assert.match(result.stdout, /--output-dir/)
   assert.match(result.stdout, /--cwd/)
+  assert.match(result.stdout, /-y, --yes/)
   assert.match(result.stdout, /--no-open/)
   assert.match(result.stdout, /--no-report/)
   assert.match(result.stdout, /--list-unowned/)
@@ -1222,6 +1223,38 @@ test('opens local report in browser after Enter confirmation', (t) => {
   assert.ok(existsSync(openLogPath), 'fake browser opener should be called')
   assert.match(readFileSync(openLogPath, 'utf8').trim(), /codeowners-gaps-report\.html$/)
   assert.match(result.stdout, /Press Enter to open it in your browser/)
+  assert.match(result.stdout, /Opened report in browser/)
+})
+
+test('-y opens local report in browser without prompting', (t) => {
+  const openerCommand = getOpenCommandName()
+  if (!openerCommand) {
+    t.skip('automatic browser opening test is not supported on win32')
+    return
+  }
+
+  const repoDir = createRepo(t)
+  const fakeBinDir = path.join(repoDir, 'fake-bin')
+  const fakeOpenPath = path.join(fakeBinDir, openerCommand)
+  const openLogPath = path.join(repoDir, 'fake-open-target.txt')
+  mkdirSync(fakeBinDir, { recursive: true })
+  writeFakeNodeScript(fakeOpenPath, [
+    'const fs = require("node:fs")',
+    `fs.writeFileSync(${JSON.stringify(openLogPath)}, process.argv.slice(2).join("\\n"), "utf8")`,
+  ])
+
+  const result = runCli(['-y'], {
+    cwd: repoDir,
+    noOpen: false,
+    env: {
+      PATH: fakeBinDir + path.delimiter + process.env.PATH,
+    },
+  })
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.ok(existsSync(openLogPath), 'fake browser opener should be called')
+  assert.match(readFileSync(openLogPath, 'utf8').trim(), /codeowners-gaps-report\.html$/)
+  assert.doesNotMatch(result.stdout, /Press Enter to open it in your browser/)
   assert.match(result.stdout, /Opened report in browser/)
 })
 
@@ -1447,6 +1480,24 @@ test('first positional as remote URL cleans up the temp clone', (t) => {
 
   assert.equal(result.status, 0, result.stderr)
   assert.match(result.stdout, /Cloning/)
+})
+
+test('--yes skips full-clone confirmation for remote --suggest-teams runs', (t) => {
+  const remoteUrl = createBareRemoteRepo(t)
+
+  const outputDir = mkdtempSync(path.join(tmpdir(), 'codeowners-audit-remote-suggest-out-'))
+  t.after(() => {
+    rmSync(outputDir, { recursive: true, force: true })
+  })
+  const outputFile = path.join(outputDir, 'remote-suggest-report.html')
+
+  const result = runCli([remoteUrl, '--suggest-teams', '--yes', '--output', outputFile])
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /Full repository clone required for --suggest-teams/)
+  assert.doesNotMatch(result.stdout, /Proceed with full clone/)
+  assert.match(result.stdout, /Cloning/)
+  assert.ok(existsSync(outputFile), 'report should exist at the specified output path')
 })
 
 test('first positional as local path works like --cwd', (t) => {

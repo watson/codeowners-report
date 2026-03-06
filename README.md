@@ -95,6 +95,7 @@ In interactive mode, `--no-report` implies `--list-unowned` so output still stay
 | `--github-token <token>` | GitHub token for team lookups (falls back to `GITHUB_TOKEN`, then `GH_TOKEN`) |
 | `--github-api-base-url <url>` | GitHub API base URL (default: `https://api.github.com`) |
 | `--upload` | Upload to zenbin and print a public URL |
+| `-y, --yes` | Automatically answer yes to interactive prompts |
 | `--no-open` | Do not prompt to open the report in your browser |
 | `--verbose` | Enable verbose progress output |
 | `-h, --help` | Show this help |

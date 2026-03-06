@@ -89,7 +89,7 @@ async function main () {
 
       if (!shallow) {
         console.log('Full repository clone required for --suggest-teams (this may take longer for large repositories).')
-        if (interactiveStdin) {
+        if (interactiveStdin && !options.yes) {
           const confirmed = await promptForFullClone(cloneUrl)
           if (!confirmed) {
             console.log('Clone aborted.')
@@ -199,7 +199,7 @@ async function main () {
       console.log('Report ready at %s', reportLocation)
 
       if (options.open) {
-        const shouldOpen = await promptForReportOpen(reportLocation)
+        const shouldOpen = options.yes ? true : await promptForReportOpen(reportLocation)
         if (shouldOpen) {
           try {
             openReportInBrowser(reportLocation)
@@ -249,6 +249,7 @@ async function main () {
  *   githubToken?: string,
  *   githubApiBaseUrl: string,
  *   upload: boolean,
+ *   yes: boolean,
  *   open: boolean,
  *   verbose: boolean,
  *   help: boolean,
@@ -281,6 +282,7 @@ function parseArgs (args) {
   let githubTokenSetExplicitly = false
   let githubApiBaseUrl = GITHUB_API_BASE_URL
   let upload = false
+  let yes = false
   let open = true
   let verbose = false
   let help = false
@@ -451,6 +453,11 @@ function parseArgs (args) {
       continue
     }
 
+    if (arg === '--yes' || arg === '-y') {
+      yes = true
+      continue
+    }
+
     if (arg === '--no-open') {
       open = false
       continue
@@ -553,6 +560,7 @@ function parseArgs (args) {
     githubToken,
     githubApiBaseUrl,
     upload,
+    yes,
     open,
     verbose,
     help,
@@ -742,6 +750,7 @@ function printUsage () {
     ['--github-token <token>', 'GitHub token for team lookups (falls back to GITHUB_TOKEN, then GH_TOKEN)'],
     ['--github-api-base-url <url>', `GitHub API base URL (default: ${GITHUB_API_BASE_URL})`],
     ['--upload', `Upload to ${UPLOAD_PROVIDER} and print a public URL`],
+    ['-y, --yes', 'Automatically answer yes to interactive prompts'],
     ['--no-open', 'Do not prompt to open the report in your browser'],
     ['--verbose', 'Enable verbose progress output'],
     ['-h, --help', 'Show this help'],
@@ -1059,7 +1068,7 @@ function formatCommandError (error) {
  */
 function createCliGlobMatcher (patterns) {
   const matchers = patterns.map(pattern => createPatternMatcher(pattern))
-  return (filePath) => matchers.some(matches => matches(filePath, filePath))
+  return (filePath) => matchers.some(matches => matches(filePath))
 }
 
 /**
