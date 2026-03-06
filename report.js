@@ -932,6 +932,10 @@ function openReportInBrowser (target) {
  *     files: number,
  *     unowned: number
  *   },
+ *   codeownersFiles?: {
+ *     path: string,
+ *     rules: number
+ *   }[],
  *   unownedFiles: string[],
  *   codeownersValidationMeta?: {
  *     discoveryWarnings?: {
@@ -961,6 +965,9 @@ function outputUnownedReportResults (report, options) {
   const globListLabel = options.checkGlobs.length === 1
     ? JSON.stringify(options.checkGlobs[0])
     : JSON.stringify(options.checkGlobs)
+  const activeCodeownersPath = Array.isArray(report.codeownersFiles) && report.codeownersFiles[0]
+    ? report.codeownersFiles[0].path
+    : null
   const discoveryWarnings = Array.isArray(report.codeownersValidationMeta?.discoveryWarnings)
     ? report.codeownersValidationMeta.discoveryWarnings
     : []
@@ -992,11 +999,7 @@ function outputUnownedReportResults (report, options) {
       )
     )
     for (const warning of missingPathWarnings) {
-      console.error(
-        '- %s (from %s)',
-        colorizeCliText(warning.pattern, [ANSI_YELLOW], colorStderr),
-        colorizeCliText(warning.codeownersPath, [ANSI_DIM], colorStderr)
-      )
+      console.error('- %s', colorizeCliText(warning.pattern, [ANSI_YELLOW], colorStderr))
     }
     console.error('')
   }
@@ -1020,6 +1023,9 @@ function outputUnownedReportResults (report, options) {
       [
         colorizeCliText('Coverage summary:', [ANSI_BOLD, ANSI_CYAN], colorStdout),
         `${colorizeCliText('globs:', [ANSI_DIM], colorStdout)} ${globListLabel}`,
+        ...(activeCodeownersPath
+          ? [`${colorizeCliText('codeowners file:', [ANSI_DIM], colorStdout)} ${colorizeCliText(activeCodeownersPath, [ANSI_BOLD], colorStdout)}`]
+          : []),
         `${colorizeCliText('analyzed files:', [ANSI_DIM], colorStdout)} ${colorizeCliText(String(report.totals.files), [ANSI_BOLD], colorStdout)}`,
         `${colorizeCliText('unknown files:', [ANSI_DIM], colorStdout)} ${colorizeCliText(String(report.totals.unowned), report.totals.unowned > 0 ? [ANSI_BOLD, ANSI_RED] : [ANSI_BOLD, ANSI_GREEN], colorStdout)}`,
         `${colorizeCliText('missing path warnings:', [ANSI_DIM], colorStdout)} ${colorizeCliText(String(missingPathWarningCount), missingPathWarningCount > 0 ? [ANSI_BOLD, ANSI_YELLOW] : [ANSI_BOLD, ANSI_GREEN], colorStdout)}`,

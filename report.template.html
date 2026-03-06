@@ -618,21 +618,6 @@
           patternSpan.textContent = warning.pattern
           item.appendChild(patternSpan)
 
-          const textSpan = document.createElement('span')
-          textSpan.className = 'warning-text'
-          textSpan.textContent = ' (from '
-          item.appendChild(textSpan)
-
-          const sourceSpan = document.createElement('span')
-          sourceSpan.className = 'warning-reference'
-          sourceSpan.textContent = warning.codeownersPath
-          item.appendChild(sourceSpan)
-
-          const trailingSpan = document.createElement('span')
-          trailingSpan.className = 'warning-text'
-          trailingSpan.textContent = ')'
-          item.appendChild(trailingSpan)
-
           list.appendChild(item)
         }
 

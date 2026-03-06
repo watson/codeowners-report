@@ -696,7 +696,7 @@ test('report includes missing CODEOWNERS path warnings in validation metadata', 
   )
   assert.doesNotMatch(html, /missing-path-warnings-summary/)
   assert.match(html, /patternSpan\.className = 'warning-path'/)
-  assert.match(html, /sourceSpan\.className = 'warning-reference'/)
+  assert.doesNotMatch(html, /textSpan\.textContent = ' \(from '/)
   const reportData = parseReportDataFromHtml(html)
   assert.equal(reportData.codeownersValidationMeta.discoveryWarningCount, 0)
   assert.equal(reportData.codeownersValidationMeta.missingPathWarningCount, 2)
@@ -726,10 +726,10 @@ test('--no-report prints missing CODEOWNERS path warnings to stderr', (t) => {
 
   assert.equal(result.status, 0, result.stderr)
   assert.match(result.stderr, /Missing CODEOWNERS paths \(1\):/)
-  assert.match(result.stderr, /\/does-not-exist\.js \(from CODEOWNERS\)/)
+  assert.match(result.stderr, /- \/does-not-exist\.js/)
   assert.match(
     result.stdout,
-    /Coverage summary:\nglobs: "\*\*"\nanalyzed files: 3\nunknown files: 0\nmissing path warnings: 1\nlocation warnings: 0/
+    /Coverage summary:\nglobs: "\*\*"\ncodeowners file: CODEOWNERS\nanalyzed files: 3\nunknown files: 0\nmissing path warnings: 1\nlocation warnings: 0/
   )
 })
 
@@ -790,6 +790,7 @@ test('--no-report prints CODEOWNERS discovery warnings to stderr', (t) => {
     result.stderr,
     /packages\/CODEOWNERS is in an unsupported location and is ignored by GitHub\./
   )
+  assert.match(result.stdout, /codeowners file: CODEOWNERS/)
   assert.match(result.stdout, /location warnings: 2/)
   assert.match(result.stdout, /missing path warnings: 0/)
 })
