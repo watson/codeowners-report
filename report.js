@@ -22,6 +22,8 @@ const TEAM_SUGGESTIONS_DEFAULT_WINDOW_DAYS = 365
 const TEAM_SUGGESTIONS_DEFAULT_TOP = 3
 const GITHUB_API_BASE_URL = 'https://api.github.com'
 const FILE_ANALYSIS_PROGRESS_INTERVAL = 20000
+const SUPPORTED_CODEOWNERS_PATHS = ['.github/CODEOWNERS', 'CODEOWNERS', 'docs/CODEOWNERS']
+const SUPPORTED_CODEOWNERS_PATHS_LABEL = SUPPORTED_CODEOWNERS_PATHS.join(', ')
 const EXIT_CODE_UNCOVERED = 1
 const EXIT_CODE_RUNTIME_ERROR = 2
 const ANSI_RESET = '\u001b[0m'
@@ -124,16 +126,15 @@ async function main () {
     const repoRoot = runGitCommand(['rev-parse', '--show-toplevel'], commandWorkingDir).trim()
 
     const allRepoFiles = listRepoFiles(options.includeUntracked, repoRoot)
-    const codeownersFilePaths = allRepoFiles.filter(isCodeownersFile)
-
-    if (codeownersFilePaths.length === 0) {
-      throw new Error('No CODEOWNERS files found in this repository.')
+    const discoveredCodeownersPaths = listDiscoveredCodeownersPaths(allRepoFiles)
+    const codeownersPath = resolveActiveCodeownersPath(discoveredCodeownersPaths)
+    if (!codeownersPath) {
+      throw new Error(buildMissingSupportedCodeownersError(discoveredCodeownersPaths))
     }
 
-    const codeownersDescriptors = codeownersFilePaths
-      .map(codeownersPath => loadCodeownersDescriptor(repoRoot, codeownersPath))
-      .sort(compareCodeownersDescriptor)
-    const missingPathWarnings = collectMissingCodeownersPathWarnings(codeownersDescriptors, allRepoFiles)
+    const codeownersDescriptor = loadCodeownersDescriptor(repoRoot, codeownersPath)
+    const discoveryWarnings = collectCodeownersDiscoveryWarnings(discoveredCodeownersPaths, codeownersPath)
+    const missingPathWarnings = collectMissingCodeownersPathWarnings(codeownersDescriptor, allRepoFiles)
 
     const scopeFilteredFiles = filterFilesByCliGlobs(allRepoFiles, options.checkGlobs)
 
@@ -146,8 +147,10 @@ async function main () {
       options.verbose && (options.teamSuggestions || filesToAnalyze.length >= FILE_ANALYSIS_PROGRESS_INTERVAL)
     )
     progress('Scanning %d files against CODEOWNERS rules...', filesToAnalyze.length)
-    const report = buildReport(repoRoot, filesToAnalyze, codeownersDescriptors, options, progress)
+    const report = buildReport(repoRoot, filesToAnalyze, codeownersDescriptor, options, progress)
     report.codeownersValidationMeta = {
+      discoveryWarnings,
+      discoveryWarningCount: discoveryWarnings.length,
       missingPathWarnings,
       missingPathWarningCount: missingPathWarnings.length,
     }
@@ -922,9 +925,14 @@ function openReportInBrowser (target) {
  *   },
  *   unownedFiles: string[],
  *   codeownersValidationMeta?: {
+ *     discoveryWarnings?: {
+ *       path: string,
+ *       type: 'unused-supported-location'|'unsupported-location',
+ *       referencePath?: string,
+ *       message: string
+ *     }[],
  *     missingPathWarnings?: {
  *       codeownersPath: string,
- *       scopedDir: string,
  *       pattern: string,
  *       owners: string[]
  *     }[]
@@ -944,6 +952,10 @@ function outputUnownedReportResults (report, options) {
   const globListLabel = options.checkGlobs.length === 1
     ? JSON.stringify(options.checkGlobs[0])
     : JSON.stringify(options.checkGlobs)
+  const discoveryWarnings = Array.isArray(report.codeownersValidationMeta?.discoveryWarnings)
+    ? report.codeownersValidationMeta.discoveryWarnings
+    : []
+  const locationWarningCount = discoveryWarnings.length
   const missingPathWarnings = Array.isArray(report.codeownersValidationMeta?.missingPathWarnings)
     ? report.codeownersValidationMeta.missingPathWarnings
     : []
@@ -980,6 +992,20 @@ function outputUnownedReportResults (report, options) {
     console.error('')
   }
 
+  if (options.noReport && locationWarningCount > 0) {
+    console.error(
+      colorizeCliText(
+        `CODEOWNERS location warnings (${locationWarningCount}):`,
+        [ANSI_BOLD, ANSI_YELLOW],
+        colorStderr
+      )
+    )
+    for (const warning of discoveryWarnings) {
+      console.error('%s', formatCodeownersDiscoveryWarningForCli(warning, colorStderr))
+    }
+    console.error('')
+  }
+
   if (options.showCoverageSummary !== false) {
     console.log(
       [
@@ -988,6 +1014,7 @@ function outputUnownedReportResults (report, options) {
         `${colorizeCliText('analyzed files:', [ANSI_DIM], colorStdout)} ${colorizeCliText(String(report.totals.files), [ANSI_BOLD], colorStdout)}`,
         `${colorizeCliText('unknown files:', [ANSI_DIM], colorStdout)} ${colorizeCliText(String(report.totals.unowned), report.totals.unowned > 0 ? [ANSI_BOLD, ANSI_RED] : [ANSI_BOLD, ANSI_GREEN], colorStdout)}`,
         `${colorizeCliText('missing path warnings:', [ANSI_DIM], colorStdout)} ${colorizeCliText(String(missingPathWarningCount), missingPathWarningCount > 0 ? [ANSI_BOLD, ANSI_YELLOW] : [ANSI_BOLD, ANSI_GREEN], colorStdout)}`,
+        `${colorizeCliText('location warnings:', [ANSI_DIM], colorStdout)} ${colorizeCliText(String(locationWarningCount), locationWarningCount > 0 ? [ANSI_BOLD, ANSI_YELLOW] : [ANSI_BOLD, ANSI_GREEN], colorStdout)}`,
       ].join('\n')
     )
   }
@@ -1178,7 +1205,38 @@ function listRepoFiles (includeUntracked, repoRoot) {
 }
 
 /**
- * Determine if a path points to a CODEOWNERS file.
+ * Format a CODEOWNERS discovery warning for CLI output.
+ * @param {{
+ *   path: string,
+ *   type: 'unused-supported-location'|'unsupported-location',
+ *   referencePath?: string,
+ *   message: string
+ * }} warning
+ * @param {boolean} useColor
+ * @returns {string}
+ */
+function formatCodeownersDiscoveryWarningForCli (warning, useColor) {
+  const bullet = colorizeCliText('- ', [ANSI_DIM], useColor)
+  const warningPath = colorizeCliText(warning.path, [ANSI_YELLOW], useColor)
+  const warningText = colorizeCliText(
+    warning.type === 'unused-supported-location'
+      ? ' is unused because GitHub selects '
+      : ' is in an unsupported location and is ignored by GitHub.',
+    [ANSI_DIM],
+    useColor
+  )
+
+  if (warning.type === 'unused-supported-location' && warning.referencePath) {
+    const referencePath = colorizeCliText(warning.referencePath, [ANSI_CYAN], useColor)
+    const trailingText = colorizeCliText(' first.', [ANSI_DIM], useColor)
+    return bullet + warningPath + warningText + referencePath + trailingText
+  }
+
+  return bullet + warningPath + warningText
+}
+
+/**
+ * Determine if a path points to any CODEOWNERS file.
  * @param {string} filePath
  * @returns {boolean}
  */
@@ -1187,23 +1245,54 @@ function isCodeownersFile (filePath) {
 }
 
 /**
- * Resolve the scope base for a CODEOWNERS file.
- * GitHub treats top-level CODEOWNERS files in root, .github/, and docs/
- * as repository-wide files.
- * @param {string} codeownersPath
+ * Determine if a path points to a supported GitHub CODEOWNERS location.
+ * @param {string} filePath
+ * @returns {boolean}
+ */
+function isSupportedCodeownersFile (filePath) {
+  return SUPPORTED_CODEOWNERS_PATHS.includes(filePath)
+}
+
+/**
+ * List all discovered CODEOWNERS file paths in the repository.
+ * @param {string[]} repoFiles
+ * @returns {string[]}
+ */
+function listDiscoveredCodeownersPaths (repoFiles) {
+  return repoFiles.filter(isCodeownersFile)
+}
+
+/**
+ * Resolve the active CODEOWNERS file using GitHub's precedence rules.
+ * GitHub only considers top-level CODEOWNERS files in `.github/`, the
+ * repository root, and `docs/`, using the first file it finds in that order.
+ * @param {string[]} discoveredCodeownersPaths
+ * @returns {string|undefined}
+ */
+function resolveActiveCodeownersPath (discoveredCodeownersPaths) {
+  return SUPPORTED_CODEOWNERS_PATHS.find(codeownersPath => discoveredCodeownersPaths.includes(codeownersPath))
+}
+
+/**
+ * Build a clear error when no supported CODEOWNERS file is available.
+ * @param {string[]} discoveredCodeownersPaths
  * @returns {string}
  */
-function resolveCodeownersScopeBase (codeownersPath) {
-  if (
-    codeownersPath === 'CODEOWNERS' ||
-    codeownersPath === '.github/CODEOWNERS' ||
-    codeownersPath === 'docs/CODEOWNERS'
-  ) {
-    return ''
+function buildMissingSupportedCodeownersError (discoveredCodeownersPaths) {
+  if (discoveredCodeownersPaths.length === 0) {
+    return 'No CODEOWNERS files found in this repository.'
   }
 
-  const codeownersDir = path.posix.dirname(codeownersPath)
-  return codeownersDir === '.' ? '' : codeownersDir
+  const unsupportedPaths = discoveredCodeownersPaths.filter((filePath) => !isSupportedCodeownersFile(filePath))
+  if (unsupportedPaths.length === discoveredCodeownersPaths.length) {
+    return [
+      'No supported CODEOWNERS files found in this repository.',
+      `GitHub only supports ${SUPPORTED_CODEOWNERS_PATHS_LABEL}.`,
+      `Unsupported CODEOWNERS files were found at: ${unsupportedPaths.join(', ')}.`,
+    ].join(' ')
+  }
+
+  return 'No CODEOWNERS files found in this repository.'
 }
 
 /**
@@ -1221,22 +1310,19 @@ function toPosixPath (value) {
  * @param {string} codeownersPath
  * @returns {{
  *   path: string,
- *   dir: string,
  *   rules: {
  *     pattern: string,
  *     owners: string[],
- *     matches: (scopePath: string, repoPath: string) => boolean
+ *     matches: (repoPath: string) => boolean
  *   }[]
  * }}
  */
 function loadCodeownersDescriptor (repoRoot, codeownersPath) {
-  const descriptorDir = resolveCodeownersScopeBase(codeownersPath)
   const fileContent = readFileSync(path.join(repoRoot, codeownersPath), 'utf8')
   const rules = parseCodeowners(fileContent)
 
   return {
     path: codeownersPath,
-    dir: descriptorDir,
     rules,
   }
 }
@@ -1244,7 +1330,7 @@ function loadCodeownersDescriptor (repoRoot, codeownersPath) {
 /**
  * Parse CODEOWNERS content into rule matchers.
  * @param {string} fileContent
- * @returns {{ pattern: string, owners: string[], matches: (scopePath: string, repoPath: string) => boolean }[]}
+ * @returns {{ pattern: string, owners: string[], matches: (repoPath: string) => boolean }[]}
  */
 function parseCodeowners (fileContent) {
   const lines = fileContent.split(/\r?\n/)
@@ -1314,7 +1400,7 @@ function unescapeToken (token) {
 /**
  * Build a matcher for a CODEOWNERS pattern.
  * @param {string} rawPattern
- * @returns {(scopePath: string, repoPath: string) => boolean}
+ * @returns {(repoPath: string) => boolean}
  */
 function createPatternMatcher (rawPattern, options = {}) {
   const includeDescendants = Boolean(options.includeDescendants)
@@ -1331,11 +1417,11 @@ function createPatternMatcher (rawPattern, options = {}) {
   const descendantSuffix = (directoryOnly || (includeDescendants && !lastSegmentHasWildcards)) ? '(?:/.*)?' : ''
   if (anchored) {
     const anchoredRegex = new RegExp(`^${patternSource}${descendantSuffix}$`)
-    return (scopePath) => anchoredRegex.test(scopePath)
+    return (repoPath) => anchoredRegex.test(repoPath)
   }
 
   const unanchoredRegex = new RegExp(`(?:^|/)${patternSource}${descendantSuffix}$`)
-  return (scopePath, repoPath) => unanchoredRegex.test(scopePath) || unanchoredRegex.test(repoPath)
+  return (repoPath) => unanchoredRegex.test(repoPath)
 }
 
 /**
@@ -1377,67 +1463,38 @@ function escapeRegexChar (char) {
 }
 
 /**
- * Sort CODEOWNERS files from broadest to narrowest scope.
- * @param {{ dir: string, path: string }} first
- * @param {{ dir: string, path: string }} second
- * @returns {number}
- */
-function compareCodeownersDescriptor (first, second) {
-  const firstDepth = first.dir ? first.dir.split('/').length : 0
-  const secondDepth = second.dir ? second.dir.split('/').length : 0
-  if (firstDepth !== secondDepth) return firstDepth - secondDepth
-  return first.path.localeCompare(second.path)
-}
-
-/**
  * Build missing-path warnings for CODEOWNERS rules that match no repository files.
  * @param {{
  *   path: string,
- *   dir: string,
  *   rules: {
  *     pattern: string,
  *     owners: string[],
- *     matches: (scopePath: string, repoPath: string) => boolean
+ *     matches: (repoPath: string) => boolean
  *   }[]
- * }[]} codeownersDescriptors
+ * }} codeownersDescriptor
  * @param {string[]} repoFiles
  * @returns {{
  *   codeownersPath: string,
- *   scopedDir: string,
  *   pattern: string,
  *   owners: string[]
  * }[]}
  */
-function collectMissingCodeownersPathWarnings (codeownersDescriptors, repoFiles) {
+function collectMissingCodeownersPathWarnings (codeownersDescriptor, repoFiles) {
   /** @type {{
    *   codeownersPath: string,
-   *   scopedDir: string,
    *   pattern: string,
    *   owners: string[]
    * }[]} */
   const warnings = []
 
-  for (const descriptor of codeownersDescriptors) {
-    const scopedFiles = descriptor.dir
-      ? repoFiles.filter((filePath) => pathIsInside(filePath, descriptor.dir))
-      : repoFiles
-
-    for (const rule of descriptor.rules) {
-      const hasMatch = scopedFiles.some((filePath) => {
-        const scopePath = descriptor.dir
-          ? filePath.slice(descriptor.dir.length + 1)
-          : filePath
-        return rule.matches(scopePath, filePath)
+  for (const rule of codeownersDescriptor.rules) {
+    const hasMatch = repoFiles.some((filePath) => rule.matches(filePath))
+    if (!hasMatch) {
+      warnings.push({
+        codeownersPath: codeownersDescriptor.path,
+        pattern: rule.pattern,
+        owners: rule.owners,
       })
-
-      if (!hasMatch) {
-        warnings.push({
-          codeownersPath: descriptor.path,
-          scopedDir: descriptor.dir || '.',
-          pattern: rule.pattern,
-          owners: rule.owners,
-        })
-      }
     }
   }
 
@@ -1450,18 +1507,61 @@ function collectMissingCodeownersPathWarnings (codeownersDescriptors, repoFiles)
 }
 
 /**
+ * Build discovery warnings for extra or unsupported CODEOWNERS files.
+ * @param {string[]} discoveredCodeownersPaths
+ * @param {string} activeCodeownersPath
+ * @returns {{
+ *   path: string,
+ *   type: 'unused-supported-location'|'unsupported-location',
+ *   referencePath?: string,
+ *   message: string
+ * }[]}
+ */
+function collectCodeownersDiscoveryWarnings (discoveredCodeownersPaths, activeCodeownersPath) {
+  /** @type {{
+   *   path: string,
+   *   type: 'unused-supported-location'|'unsupported-location',
+   *   referencePath?: string,
+   *   message: string
+   * }[]} */
+  const warnings = []
+
+  for (const codeownersPath of discoveredCodeownersPaths) {
+    if (codeownersPath === activeCodeownersPath) continue
+
+    if (isSupportedCodeownersFile(codeownersPath)) {
+      warnings.push({
+        path: codeownersPath,
+        type: 'unused-supported-location',
+        referencePath: activeCodeownersPath,
+        message: `${codeownersPath} is unused because GitHub selects ${activeCodeownersPath} first.`,
+      })
+      continue
+    }
+
+    warnings.push({
+      path: codeownersPath,
+      type: 'unsupported-location',
+      message: `${codeownersPath} is in an unsupported location and is ignored by GitHub.`,
+    })
+  }
+
+  warnings.sort((first, second) => first.path.localeCompare(second.path))
+  return warnings
+}
+
+/**
  * Build the report payload consumed by the HTML page.
  * @param {string} repoRoot
  * @param {string[]} files
  * @param {{
  *   path: string,
- *   dir: string,
  *   rules: {
  *     pattern: string,
  *     owners: string[],
- *     matches: (scopePath: string, repoPath: string) => boolean
+ *     matches: (repoPath: string) => boolean
  *   }[]
- * }[]} codeownersDescriptors
+ * }} codeownersDescriptor
  * @param {{
  *   includeUntracked: boolean,
  *   teamSuggestions?: boolean,
@@ -1475,14 +1575,20 @@ function collectMissingCodeownersPathWarnings (codeownersDescriptors, repoFiles)
  *   generatedAt: string,
  *   options: { includeUntracked: boolean, teamSuggestionsEnabled: boolean },
  *   totals: { files: number, owned: number, unowned: number, coverage: number },
- *   codeownersFiles: { path: string, dir: string, rules: number }[],
+ *   codeownersFiles: { path: string, rules: number }[],
  *   directories: { path: string, total: number, owned: number, unowned: number, coverage: number }[],
  *   unownedFiles: string[],
  *   teamOwnership: { team: string, total: number, files: string[] }[],
  *   codeownersValidationMeta: {
+ *     discoveryWarnings: {
+ *       path: string,
+ *       type: 'unused-supported-location'|'unsupported-location',
+ *       referencePath?: string,
+ *       message: string
+ *     }[],
+ *     discoveryWarningCount: number,
  *     missingPathWarnings: {
  *       codeownersPath: string,
- *       scopedDir: string,
  *       pattern: string,
  *       owners: string[]
  *     }[],
@@ -1509,7 +1615,7 @@ function collectMissingCodeownersPathWarnings (codeownersDescriptors, repoFiles)
  *   }
  * }}
  */
-function buildReport (repoRoot, files, codeownersDescriptors, options, progress = () => {}) {
+function buildReport (repoRoot, files, codeownersDescriptor, options, progress = () => {}) {
   /** @type {Map<string, { total: number, owned: number, unowned: number }>} */
   const directoryStats = new Map()
   /** @type {string[]} */
@@ -1522,7 +1628,7 @@ function buildReport (repoRoot, files, codeownersDescriptors, options, progress 
 
   for (let fileIndex = 0; fileIndex < files.length; fileIndex++) {
     const filePath = files[fileIndex]
-    const owners = resolveOwners(filePath, codeownersDescriptors)
+    const owners = resolveOwners(filePath, codeownersDescriptor.rules)
     const isOwned = Array.isArray(owners) && owners.length > 0
     const teamOwners = collectTeamOwners(owners)
 
@@ -1596,17 +1702,16 @@ function buildReport (repoRoot, files, codeownersDescriptors, options, progress 
       teamSuggestionsEnabled: Boolean(options.teamSuggestions),
     },
     totals,
-    codeownersFiles: codeownersDescriptors.map((descriptor) => {
-      return {
-        path: descriptor.path,
-        dir: descriptor.dir || '.',
-        rules: descriptor.rules.length,
-      }
-    }),
+    codeownersFiles: [{
+      path: codeownersDescriptor.path,
+      rules: codeownersDescriptor.rules.length,
+    }],
     directories,
     unownedFiles,
     teamOwnership: teamOwnershipRows,
     codeownersValidationMeta: {
+      discoveryWarnings: [],
+      discoveryWarningCount: 0,
       missingPathWarnings: [],
       missingPathWarningCount: 0,
     },
@@ -1653,56 +1758,29 @@ function looksLikeTeamOwner (owner) {
 }
 
 /**
- * Resolve matching owners for a file by applying CODEOWNERS files from broad to narrow.
+ * Resolve matching owners for a file using the active CODEOWNERS rules.
  * @param {string} filePath
  * @param {{
- *   dir: string,
- *   rules: {
- *     owners: string[],
- *     matches: (scopePath: string, repoPath: string) => boolean
- *   }[]
- * }[]} codeownersDescriptors
+ *   owners: string[],
+ *   matches: (repoPath: string) => boolean
+ * }[]} codeownersRules
  * @returns {string[]|undefined}
  */
-function resolveOwners (filePath, codeownersDescriptors) {
-  /** @type {string[]|undefined} */
-  let owners
-
-  for (const descriptor of codeownersDescriptors) {
-    if (descriptor.dir && !pathIsInside(filePath, descriptor.dir)) continue
-
-    const scopePath = descriptor.dir ? filePath.slice(descriptor.dir.length + 1) : filePath
-    const matchedOwners = findMatchingOwners(scopePath, filePath, descriptor.rules)
-    if (matchedOwners) {
-      owners = matchedOwners
-    }
-  }
-
-  return owners
-}
-
-/**
- * Check whether filePath is inside dirPath (POSIX relative paths).
- * @param {string} filePath
- * @param {string} dirPath
- * @returns {boolean}
- */
-function pathIsInside (filePath, dirPath) {
-  return filePath === dirPath || filePath.startsWith(`${dirPath}/`)
+function resolveOwners (filePath, codeownersRules) {
+  return findMatchingOwners(filePath, codeownersRules)
 }
 
 /**
  * Find the last matching owners in a ruleset.
- * @param {string} scopePath
  * @param {string} repoPath
- * @param {{ owners: string[], matches: (scopePath: string, repoPath: string) => boolean }[]} rules
+ * @param {{ owners: string[], matches: (repoPath: string) => boolean }[]} rules
  * @returns {string[]|undefined}
  */
-function findMatchingOwners (scopePath, repoPath, rules) {
+function findMatchingOwners (repoPath, rules) {
   /** @type {string[]|undefined} */
   let owners
   for (const rule of rules) {
-    if (rule.matches(scopePath, repoPath)) {
+    if (rule.matches(repoPath)) {
       owners = rule.owners
     }
   }
@@ -1776,14 +1854,20 @@ function toPercent (value, total) {
  *   generatedAt: string,
  *   options: { includeUntracked: boolean, teamSuggestionsEnabled: boolean },
  *   totals: { files: number, owned: number, unowned: number, coverage: number },
- *   codeownersFiles: { path: string, dir: string, rules: number }[],
+ *   codeownersFiles: { path: string, rules: number }[],
  *   directories: { path: string, total: number, owned: number, unowned: number, coverage: number }[],
  *   unownedFiles: string[],
  *   teamOwnership: { team: string, total: number, files: string[] }[],
  *   codeownersValidationMeta: {
+ *     discoveryWarnings: {
+ *       path: string,
+ *       type: 'unused-supported-location'|'unsupported-location',
+ *       referencePath?: string,
+ *       message: string
+ *     }[],
+ *     discoveryWarningCount: number,
  *     missingPathWarnings: {
  *       codeownersPath: string,
- *       scopedDir: string,
  *       pattern: string,
  *       owners: string[]
  *     }[],

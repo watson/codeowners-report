@@ -689,14 +689,26 @@ test('report includes missing CODEOWNERS path warnings in validation metadata', 
 
   assert.equal(result.status, 0, result.stderr)
   const html = readFileSync(path.join(repoDir, 'missing-path-warnings.html'), 'utf8')
-  assert.match(html, /Patterns With No Matching Repository Paths/)
+  assert.match(html, /id="missing-path-warnings-heading">Patterns With No Matching Repository Paths<\/h3>/)
+  assert.ok(
+    html.indexOf('Patterns With No Matching Repository Paths') < html.indexOf('CODEOWNERS Location Warnings'),
+    'missing path warnings should appear before location warnings in the report'
+  )
+  assert.doesNotMatch(html, /missing-path-warnings-summary/)
+  assert.match(html, /patternSpan\.className = 'warning-path'/)
+  assert.match(html, /sourceSpan\.className = 'warning-reference'/)
   const reportData = parseReportDataFromHtml(html)
+  assert.equal(reportData.codeownersValidationMeta.discoveryWarningCount, 0)
   assert.equal(reportData.codeownersValidationMeta.missingPathWarningCount, 2)
   assert.deepEqual(
     reportData.codeownersValidationMeta.missingPathWarnings.map((warning) => warning.pattern),
     ['/does-not-exist.js', '/missing-dir/']
   )
   assert.equal(reportData.codeownersValidationMeta.missingPathWarnings[0].codeownersPath, 'CODEOWNERS')
+  assert.equal(
+    Object.hasOwn(reportData.codeownersValidationMeta.missingPathWarnings[0], 'scopedDir'),
+    false
+  )
   assert.doesNotMatch(result.stderr, /CODEOWNERS pattern\(s\) do not match any repository files/)
 })
 
@@ -717,8 +729,88 @@ test('--no-report prints missing CODEOWNERS path warnings to stderr', (t) => {
   assert.match(result.stderr, /\/does-not-exist\.js \(from CODEOWNERS\)/)
   assert.match(
     result.stdout,
-    /Coverage summary:\nglobs: "\*\*"\nanalyzed files: 3\nunknown files: 0\nmissing path warnings: 1/
+    /Coverage summary:\nglobs: "\*\*"\nanalyzed files: 3\nunknown files: 0\nmissing path warnings: 1\nlocation warnings: 0/
   )
+})
+
+test('report includes CODEOWNERS discovery warnings for unused and unsupported files', (t) => {
+  const repoDir = createRepo(t, {
+    codeowners: '/src/unowned.js @root\n',
+    trackedFiles: {
+      '.github/CODEOWNERS': '/src/owned.js @team\n',
+      'docs/CODEOWNERS': '/src/owned.js @docs\n',
+      'packages/CODEOWNERS': '/src/owned.js @nested\n',
+    },
+  })
+
+  const result = runCli(['--output', 'codeowners-discovery-warnings.html'], { cwd: repoDir })
+
+  assert.equal(result.status, 0, result.stderr)
+  const html = readFileSync(path.join(repoDir, 'codeowners-discovery-warnings.html'), 'utf8')
+  assert.match(html, /id="codeowners-discovery-warnings-heading">CODEOWNERS Location Warnings<\/h3>/)
+  assert.doesNotMatch(html, /codeowners-discovery-warnings-summary/)
+  const reportData = parseReportDataFromHtml(html)
+  assert.equal(reportData.codeownersValidationMeta.discoveryWarningCount, 3)
+  assert.deepEqual(
+    reportData.codeownersValidationMeta.discoveryWarnings.map((warning) => [warning.path, warning.type]),
+    [
+      ['CODEOWNERS', 'unused-supported-location'],
+      ['docs/CODEOWNERS', 'unused-supported-location'],
+      ['packages/CODEOWNERS', 'unsupported-location'],
+    ]
+  )
+  assert.match(
+    reportData.codeownersValidationMeta.discoveryWarnings[0].message,
+    /^CODEOWNERS is unused because GitHub selects \.github\/CODEOWNERS first\.$/
+  )
+  assert.match(
+    reportData.codeownersValidationMeta.discoveryWarnings[2].message,
+    /^packages\/CODEOWNERS is in an unsupported location and is ignored by GitHub\.$/
+  )
+})
+
+test('--no-report prints CODEOWNERS discovery warnings to stderr', (t) => {
+  const repoDir = createRepo(t, {
+    codeowners: [
+      '/src/owned.js @team',
+      '/src/unowned.js @team',
+    ].join('\n') + '\n',
+    trackedFiles: {
+      'docs/CODEOWNERS': '/src/owned.js @docs\n',
+      'packages/CODEOWNERS': '/src/owned.js @nested\n',
+    },
+  })
+
+  const result = runCli(['--no-report'], { cwd: repoDir })
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stderr, /CODEOWNERS location warnings \(2\):/)
+  assert.match(result.stderr, /docs\/CODEOWNERS is unused because GitHub selects CODEOWNERS first\./)
+  assert.match(
+    result.stderr,
+    /packages\/CODEOWNERS is in an unsupported location and is ignored by GitHub\./
+  )
+  assert.match(result.stdout, /location warnings: 2/)
+  assert.match(result.stdout, /missing path warnings: 0/)
+})
+
+test('unsupported-only CODEOWNERS locations fail with a clear error', (t) => {
+  const repoDir = createRepo(t)
+
+  runGit(repoDir, ['rm', '-f', 'CODEOWNERS'])
+  mkdirSync(path.join(repoDir, 'packages'), { recursive: true })
+  writeFileSync(path.join(repoDir, 'packages/CODEOWNERS'), '/src/owned.js @nested\n', 'utf8')
+  runGit(repoDir, ['add', 'packages/CODEOWNERS'])
+
+  const result = runCli([], { cwd: repoDir })
+
+  assert.equal(result.status, 2)
+  assert.match(result.stderr, /No supported CODEOWNERS files found in this repository\./)
+  assert.match(
+    result.stderr,
+    /GitHub only supports \.github\/CODEOWNERS, CODEOWNERS, docs\/CODEOWNERS\./
+  )
+  assert.match(result.stderr, /Unsupported CODEOWNERS files were found at: packages\/CODEOWNERS\./)
 })
 
 test('--fail-on-missing-paths exits non-zero when CODEOWNERS paths are missing', (t) => {
@@ -954,28 +1046,91 @@ test('wildcard in middle still allows directory descendant ownership', (t) => {
   assert.doesNotMatch(result.stdout, /Coverage summary:/)
 })
 
-test('top-level .github/CODEOWNERS applies rules repository-wide', (t) => {
+test('.github/CODEOWNERS takes precedence over root and docs CODEOWNERS files', (t) => {
   const repoDir = createRepo(t, {
-    codeowners: '/does-not-match-anything @fallback\n',
+    codeowners: '/src/root-owned.js @root\n',
     trackedFiles: {
-      '.github/CODEOWNERS': '/src/owned.js @team\n',
+      '.github/CODEOWNERS': '/src/github-owned.js @github\n',
+      'docs/CODEOWNERS': '/src/docs-owned.js @docs\n',
+      'src/root-owned.js': 'module.exports = "root"\n',
+      'src/github-owned.js': 'module.exports = "github"\n',
+      'src/docs-owned.js': 'module.exports = "docs"\n',
     },
   })
 
-  const result = runCli(['--output', 'github-codeowners-scope.html'], { cwd: repoDir })
+  const result = runCli([
+    '--glob', 'src/root-owned.js',
+    '--glob', 'src/github-owned.js',
+    '--glob', 'src/docs-owned.js',
+    '--output', 'github-codeowners-scope.html',
+  ], { cwd: repoDir })
   assert.equal(result.status, 0, result.stderr)
 
   const html = readFileSync(path.join(repoDir, 'github-codeowners-scope.html'), 'utf8')
   const reportData = parseReportDataFromHtml(html)
 
   assert.equal(reportData.totals.owned, 1)
-  assert.equal(reportData.totals.unowned, reportData.totals.files - 1)
-  assert.ok(!reportData.unownedFiles.includes('src/owned.js'))
-  assert.ok(reportData.unownedFiles.includes('src/unowned.js'))
+  assert.equal(reportData.totals.unowned, 2)
+  assert.ok(!reportData.unownedFiles.includes('src/github-owned.js'))
+  assert.ok(reportData.unownedFiles.includes('src/root-owned.js'))
+  assert.ok(reportData.unownedFiles.includes('src/docs-owned.js'))
 
-  const githubCodeowners = reportData.codeownersFiles.find(row => row.path === '.github/CODEOWNERS')
-  assert.ok(githubCodeowners, 'report should include .github/CODEOWNERS metadata')
-  assert.equal(githubCodeowners.dir, '.')
+  assert.deepEqual(reportData.codeownersFiles.map(row => row.path), ['.github/CODEOWNERS'])
+  assert.equal(Object.hasOwn(reportData.codeownersFiles[0], 'dir'), false)
+})
+
+test('root CODEOWNERS takes precedence over docs/CODEOWNERS when .github is absent', (t) => {
+  const repoDir = createRepo(t, {
+    codeowners: '/src/root-owned.js @root\n',
+    trackedFiles: {
+      'docs/CODEOWNERS': '/src/docs-owned.js @docs\n',
+      'src/root-owned.js': 'module.exports = "root"\n',
+      'src/docs-owned.js': 'module.exports = "docs"\n',
+    },
+  })
+
+  const result = runCli([
+    '--glob', 'src/root-owned.js',
+    '--glob', 'src/docs-owned.js',
+    '--output', 'root-codeowners-scope.html',
+  ], { cwd: repoDir })
+  assert.equal(result.status, 0, result.stderr)
+
+  const html = readFileSync(path.join(repoDir, 'root-codeowners-scope.html'), 'utf8')
+  const reportData = parseReportDataFromHtml(html)
+
+  assert.equal(reportData.totals.owned, 1)
+  assert.equal(reportData.totals.unowned, 1)
+  assert.ok(!reportData.unownedFiles.includes('src/root-owned.js'))
+  assert.ok(reportData.unownedFiles.includes('src/docs-owned.js'))
+  assert.deepEqual(reportData.codeownersFiles.map(row => row.path), ['CODEOWNERS'])
+})
+
+test('nested CODEOWNERS files are ignored', (t) => {
+  const repoDir = createRepo(t, {
+    codeowners: '/packages/root-owned.js @root\n',
+    trackedFiles: {
+      'packages/CODEOWNERS': '/nested-owned.js @nested\n',
+      'packages/root-owned.js': 'module.exports = "root"\n',
+      'packages/nested-owned.js': 'module.exports = "nested"\n',
+    },
+  })
+
+  const result = runCli([
+    '--glob', 'packages/root-owned.js',
+    '--glob', 'packages/nested-owned.js',
+    '--output', 'nested-codeowners-ignored.html',
+  ], { cwd: repoDir })
+  assert.equal(result.status, 0, result.stderr)
+
+  const html = readFileSync(path.join(repoDir, 'nested-codeowners-ignored.html'), 'utf8')
+  const reportData = parseReportDataFromHtml(html)
+
+  assert.equal(reportData.totals.owned, 1)
+  assert.equal(reportData.totals.unowned, 1)
+  assert.ok(!reportData.unownedFiles.includes('packages/root-owned.js'))
+  assert.ok(reportData.unownedFiles.includes('packages/nested-owned.js'))
+  assert.deepEqual(reportData.codeownersFiles.map(row => row.path), ['CODEOWNERS'])
 })
 
 test('handles large repositories without git stdout buffer overflow', (t) => {

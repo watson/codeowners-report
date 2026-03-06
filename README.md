@@ -27,8 +27,9 @@ See how ownership coverage looks in practice with [this interactive report](http
 - Directory explorer with filtering, sorting, and drill-down
 - Full unowned file list with scope and text filtering
 - Team ownership explorer with quick team chips and owned-file filtering
-- Supports multiple `CODEOWNERS` files in nested directories
+- Matches GitHub `CODEOWNERS` discovery precedence: `.github/`, repository root, then `docs/`
 - Detects CODEOWNERS patterns that match no repository paths
+- Warns when extra or unsupported `CODEOWNERS` files will be ignored by GitHub
 - Optional upload to [zenbin.org](https://zenbin.org) for easy sharing
 
 ## Installation
@@ -195,7 +196,9 @@ The report follows practical `CODEOWNERS` resolution behavior:
 
 - A file is considered **owned** if at least one owner is resolved.
 - Within a single `CODEOWNERS` file, the **last matching rule wins**.
-- If multiple `CODEOWNERS` files exist, they are applied from broader scope to narrower scope (nested files can override broader files).
+- GitHub only considers `CODEOWNERS` at `.github/CODEOWNERS`, `CODEOWNERS`, and `docs/CODEOWNERS`, using the first file found in that order.
+- Patterns are always resolved from the repository root, regardless of which supported `CODEOWNERS` location is active.
+- Extra `CODEOWNERS` files in supported locations and any `CODEOWNERS` files outside those locations are reported as ignored by GitHub.
 - Directory rules match descendant files whether they are written as `/path/to/dir` or `/path/to/dir/`.
 - `CODEOWNERS` negation patterns (`!pattern`) are ignored.
 
@@ -215,7 +218,8 @@ The generated page includes:
 - scoped directory table with coverage bars
 - searchable list of unowned files
 - team ownership explorer for filtering files by `@org/team`
-- detected `CODEOWNERS` files and rule counts
+- active `CODEOWNERS` file and rule count
+- warnings for extra or unsupported `CODEOWNERS` files that GitHub will ignore
 - warnings for CODEOWNERS patterns that match no repository paths
 
 The report is self-contained, so it can be opened directly from disk or shared after upload.

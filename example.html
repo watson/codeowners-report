@@ -243,6 +243,17 @@
       margin: 6px 0;
       color: var(--text);
     }
+    .warning-path {
+      color: #fbbf24;
+      font-weight: 600;
+    }
+    .warning-text {
+      color: var(--muted);
+    }
+    .warning-reference {
+      color: #67e8f9;
+      font-weight: 600;
+    }
 
     table {
       width: 100%;
@@ -453,22 +464,24 @@
 
     <section class="panel">
       <div class="header">
-        <h2>Detected CODEOWNERS Files</h2>
+        <h2>Active CODEOWNERS File</h2>
       </div>
       <table>
         <thead>
           <tr>
             <th>Path</th>
-            <th>Scope Base</th>
             <th>Rules</th>
           </tr>
         </thead>
         <tbody id="codeowners-table-body"></tbody>
       </table>
       <div id="missing-path-warnings" class="validation-warnings" hidden>
-        <h3>Patterns With No Matching Repository Paths</h3>
-        <p class="muted" id="missing-path-warnings-summary"></p>
+        <h3 id="missing-path-warnings-heading">Patterns With No Matching Repository Paths</h3>
         <ul id="missing-path-warnings-list"></ul>
+      </div>
+      <div id="codeowners-discovery-warnings" class="validation-warnings" hidden>
+        <h3 id="codeowners-discovery-warnings-heading">CODEOWNERS Location Warnings</h3>
+        <ul id="codeowners-discovery-warnings-list"></ul>
       </div>
     </section>
   </div>
@@ -482,7 +495,7 @@
 
   <script type="application/json" id="report-data">{
   "repoName": "nodejs/node",
-  "generatedAt": "2026-03-06T11:57:02.805Z",
+  "generatedAt": "2026-03-06T13:02:11.919Z",
   "options": {
     "includeUntracked": false,
     "teamSuggestionsEnabled": false
@@ -496,7 +509,6 @@
   "codeownersFiles": [
     {
       "path": ".github/CODEOWNERS",
-      "dir": ".",
       "rules": 153
     }
   ],
@@ -77912,10 +77924,11 @@
     }
   ],
   "codeownersValidationMeta": {
+    "discoveryWarnings": [],
+    "discoveryWarningCount": 0,
     "missingPathWarnings": [
       {
         "codeownersPath": ".github/CODEOWNERS",
-        "scopedDir": ".",
         "pattern": "/.devcontainer/*",
         "owners": [
           "@nodejs/devcontainer"
@@ -77948,6 +77961,8 @@
       const suggestionRows = Array.isArray(report.directoryTeamSuggestions) ? report.directoryTeamSuggestions : []
       const suggestionMeta = report.directoryTeamSuggestionsMeta || { enabled: false, warnings: [] }
       const codeownersValidationMeta = report.codeownersValidationMeta || {
+        discoveryWarnings: [],
+        discoveryWarningCount: 0,
         missingPathWarnings: [],
         missingPathWarningCount: 0,
       }
@@ -78001,6 +78016,7 @@
 
       renderCodeownersFiles(report.codeownersFiles)
       renderMissingPathWarnings(codeownersValidationMeta)
+      renderCodeownersDiscoveryWarnings(codeownersValidationMeta)
       directoryController = setupDirectoryTable(
         report.directories,
         suggestionByPath,
@@ -78024,19 +78040,17 @@
           const tr = document.createElement('tr')
           tr.innerHTML = [
             '<td class="path"></td>',
-            '<td class="path"></td>',
             '<td></td>'
           ].join('')
           tr.children[0].textContent = row.path
-          tr.children[1].textContent = row.dir
-          tr.children[2].textContent = fmt.format(row.rules)
+          tr.children[1].textContent = fmt.format(row.rules)
           body.appendChild(tr)
         }
       }
 
       function renderMissingPathWarnings (validationMeta) {
         const container = document.getElementById('missing-path-warnings')
-        const summary = document.getElementById('missing-path-warnings-summary')
+        const heading = document.getElementById('missing-path-warnings-heading')
         const list = document.getElementById('missing-path-warnings-list')
         const warningRows = Array.isArray(validationMeta && validationMeta.missingPathWarnings)
           ? validationMeta.missingPathWarnings
@@ -78049,13 +78063,81 @@
         }
 
         const warningCount = Number(validationMeta && validationMeta.missingPathWarningCount) || warningRows.length
-        summary.textContent = fmt.format(warningCount) +
-          ' CODEOWNERS pattern(s) do not match any repository file in the scanned repository scope.'
+        heading.textContent = 'Patterns With No Matching Repository Paths (' + fmt.format(warningCount) + ')'
 
         for (const warning of warningRows) {
           const item = document.createElement('li')
-          item.textContent =
-            warning.pattern + ' (from ' + warning.codeownersPath + ')'
+          const patternSpan = document.createElement('span')
+          patternSpan.className = 'warning-path'
+          patternSpan.textContent = warning.pattern
+          item.appendChild(patternSpan)
+
+          const textSpan = document.createElement('span')
+          textSpan.className = 'warning-text'
+          textSpan.textContent = ' (from '
+          item.appendChild(textSpan)
+
+          const sourceSpan = document.createElement('span')
+          sourceSpan.className = 'warning-reference'
+          sourceSpan.textContent = warning.codeownersPath
+          item.appendChild(sourceSpan)
+
+          const trailingSpan = document.createElement('span')
+          trailingSpan.className = 'warning-text'
+          trailingSpan.textContent = ')'
+          item.appendChild(trailingSpan)
+
+          list.appendChild(item)
+        }
+
+        container.hidden = false
+      }
+
+      function renderCodeownersDiscoveryWarnings (validationMeta) {
+        const container = document.getElementById('codeowners-discovery-warnings')
+        const heading = document.getElementById('codeowners-discovery-warnings-heading')
+        const list = document.getElementById('codeowners-discovery-warnings-list')
+        const warningRows = Array.isArray(validationMeta && validationMeta.discoveryWarnings)
+          ? validationMeta.discoveryWarnings
+          : []
+
+        list.innerHTML = ''
+        if (warningRows.length === 0) {
+          container.hidden = true
+          return
+        }
+
+        const warningCount = Number(validationMeta && validationMeta.discoveryWarningCount) || warningRows.length
+        heading.textContent = 'CODEOWNERS Location Warnings (' + fmt.format(warningCount) + ')'
+
+        for (const warning of warningRows) {
+          const item = document.createElement('li')
+          const pathSpan = document.createElement('span')
+          pathSpan.className = 'warning-path'
+          pathSpan.textContent = warning.path
+          item.appendChild(pathSpan)
+
+          const textSpan = document.createElement('span')
+          textSpan.className = 'warning-text'
+
+          if (warning.type === 'unused-supported-location' && warning.referencePath) {
+            textSpan.textContent = ' is unused because GitHub selects '
+            item.appendChild(textSpan)
+
+            const referenceSpan = document.createElement('span')
+            referenceSpan.className = 'warning-reference'
+            referenceSpan.textContent = warning.referencePath
+            item.appendChild(referenceSpan)
+
+            const trailingSpan = document.createElement('span')
+            trailingSpan.className = 'warning-text'
+            trailingSpan.textContent = ' first.'
+            item.appendChild(trailingSpan)
+          } else {
+            textSpan.textContent = ' is in an unsupported location and is ignored by GitHub.'
+            item.appendChild(textSpan)
+          }
+
           list.appendChild(item)
         }
 
