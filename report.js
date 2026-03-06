@@ -15,7 +15,7 @@ import {
 const DEFAULT_OUTPUT_FILE_NAME = 'codeowners-gaps-report.html'
 const DEFAULT_OUTPUT_PATH = path.join(tmpdir(), 'codeowners-audit', DEFAULT_OUTPUT_FILE_NAME)
 const UPLOAD_PROVIDER = 'zenbin'
-const ZENBIN_BASE_URL = 'https://zenbin.org'
+const ZENBIN_BASE_URL = process.env.CODEOWNERS_AUDIT_ZENBIN_BASE_URL || 'https://zenbin.org'
 const ZENBIN_MAX_UPLOAD_BYTES = 1024 * 1024
 const GIT_COMMAND_MAX_BUFFER = 64 * 1024 * 1024
 const TEAM_SUGGESTIONS_DEFAULT_WINDOW_DAYS = 365
@@ -173,7 +173,7 @@ async function main () {
       /** @type {string} */
       let reportLocation = outputAbsolutePath
       if (options.upload) {
-        const uploadUrl = uploadReport(outputAbsolutePath)
+        const uploadUrl = await uploadReport(outputAbsolutePath)
         reportLocation = uploadUrl
         console.log('Uploaded report (%s): %s', UPLOAD_PROVIDER, uploadUrl)
       }
@@ -954,18 +954,18 @@ function filterFilesByCliGlobs (files, patterns) {
 /**
  * Upload the generated HTML report.
  * @param {string} reportPath
- * @returns {string}
+ * @returns {Promise<string>}
  */
-function uploadReport (reportPath) {
+async function uploadReport (reportPath) {
   return uploadToZenbin(reportPath)
 }
 
 /**
  * Upload a file to ZenBin and return the public URL.
  * @param {string} filePath
- * @returns {string}
+ * @returns {Promise<string>}
  */
-function uploadToZenbin (filePath) {
+async function uploadToZenbin (filePath) {
   const fileBaseName = path.basename(filePath, path.extname(filePath))
   const pageId = createZenbinPageId(fileBaseName)
   const payload = JSON.stringify({ html: readFileSync(filePath, 'utf8') })
@@ -979,41 +979,38 @@ function uploadToZenbin (filePath) {
     )
   }
 
-  let stdout
+  const url = `${ZENBIN_BASE_URL}/v1/pages/${pageId}`
+
+  /** @type {globalThis.Response} */
+  let httpResponse
   try {
-    stdout = execFileSync('curl', [
-      '--silent',
-      '--show-error',
-      '--fail',
-      '-X',
-      'POST',
-      '-H',
-      'Content-Type: application/json',
-      '--data-binary',
-      '@-',
-      `${ZENBIN_BASE_URL}/v1/pages/${pageId}`,
-    ], {
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-      input: payload,
+    httpResponse = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload,
     })
   } catch (error) {
-    const stderr = error && typeof error === 'object' && 'stderr' in error
-      ? String(error.stderr || '').trim()
-      : ''
-    const likelyTooLargeHint = /returned error:\s*400\b/i.test(stderr)
+    throw new Error(`Upload failed (${UPLOAD_PROVIDER}): ${error instanceof Error ? error.message : String(error)}`)
+  }
+
+  const responseText = await httpResponse.text()
+
+  if (!httpResponse.ok) {
+    const likelyTooLargeHint = httpResponse.status === 400
       ? ` (ZenBin may reject payloads near 1 MiB; current payload is ${formatBytes(payloadBytes)})`
       : ''
-    throw new Error(`Upload failed (${UPLOAD_PROVIDER}): ${stderr || String(error)}${likelyTooLargeHint}`)
+    throw new Error(
+      `Upload failed (${UPLOAD_PROVIDER}): HTTP ${httpResponse.status}${likelyTooLargeHint}`
+    )
   }
 
   /** @type {{ url?: string }} */
   let response
   try {
-    response = JSON.parse(String(stdout))
+    response = JSON.parse(responseText)
   } catch {
     throw new Error(
-      `Upload failed (${UPLOAD_PROVIDER}): invalid JSON response: ${JSON.stringify(String(stdout).trim())}`
+      `Upload failed (${UPLOAD_PROVIDER}): invalid JSON response: ${JSON.stringify(responseText.trim())}`
     )
   }
 

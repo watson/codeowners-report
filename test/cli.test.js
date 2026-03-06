@@ -156,7 +156,7 @@ function addTrackedBulkFilesForStress (repoDir, minimumGitListBytes) {
   while (estimatedGitListBytes < minimumGitListBytes) {
     const fileName = `file-${String(fileCount).padStart(5, '0')}-${fileSuffix}.txt`
     writeFileSync(path.join(bulkAbsoluteDir, fileName), 'x\n', 'utf8')
-    const relativePath = `${bulkRelativeDir}/${fileName}`
+    const relativePath = bulkRelativeDir + '/' + fileName
     estimatedGitListBytes += Buffer.byteLength(relativePath, 'utf8') + 1
     fileCount++
   }
@@ -1008,33 +1008,41 @@ test('does not open local report when open confirmation is declined', (t) => {
   assert.match(result.stdout, /Skipped opening report in browser/)
 })
 
-test('--upload uses curl response URL in output', (t) => {
+test('--upload uses fetch response URL in output', async (t) => {
   const repoDir = createRepo(t)
-  const fakeBinDir = path.join(repoDir, 'fake-bin')
-  const fakeCurlPath = path.join(fakeBinDir, 'curl')
-  const uploadLogPath = path.join(repoDir, 'fake-upload-payload.txt')
-  mkdirSync(fakeBinDir, { recursive: true })
-  writeFakeNodeScript(fakeCurlPath, [
-    'const fs = require("node:fs")',
-    'const payload = fs.readFileSync(0, "utf8")',
-    `fs.writeFileSync(${JSON.stringify(uploadLogPath)}, payload, "utf8")`,
-    'process.stdout.write(JSON.stringify({ url: "https://zenbin.org/p/test-page" }))',
-  ])
 
-  const result = runCli(['--upload'], {
+  let capturedPayload = ''
+  const server = createServer((req, res) => {
+    let body = ''
+    req.on('data', (chunk) => { body += chunk })
+    req.on('end', () => {
+      capturedPayload = body
+      res.setHeader('content-type', 'application/json')
+      res.end(JSON.stringify({ url: 'https://zenbin.org/p/test-page' }))
+    })
+  })
+  await /** @type {Promise<void>} */ (
+    new Promise((resolve) => { server.listen(0, '127.0.0.1', resolve) })
+  )
+  t.after(() => { server.close() })
+  const address = server.address()
+  assert.ok(address && typeof address === 'object')
+  const apiBaseUrl = `http://127.0.0.1:${address.port}`
+
+  const result = await runCliAsync(['--upload'], {
     cwd: repoDir,
     env: {
-      PATH: fakeBinDir + path.delimiter + process.env.PATH,
+      CODEOWNERS_AUDIT_ZENBIN_BASE_URL: apiBaseUrl,
     },
   })
 
   assert.equal(result.status, 0, result.stderr)
   assert.match(result.stdout, /Uploaded report \(zenbin\): https:\/\/zenbin\.org\/p\/test-page/)
-  assert.ok(existsSync(uploadLogPath), 'fake curl should receive payload via stdin')
-  assert.match(readFileSync(uploadLogPath, 'utf8'), /"html":/)
+  assert.ok(capturedPayload.length > 0, 'mock server should receive the upload payload')
+  assert.match(capturedPayload, /"html":/)
 })
 
-test('--upload opens uploaded URL in browser after Enter confirmation', (t) => {
+test('--upload opens uploaded URL in browser after Enter confirmation', async (t) => {
   const openerCommand = getOpenCommandName()
   if (!openerCommand) {
     t.skip('automatic browser opening test is not supported on win32')
@@ -1043,33 +1051,41 @@ test('--upload opens uploaded URL in browser after Enter confirmation', (t) => {
 
   const repoDir = createRepo(t)
   const fakeBinDir = path.join(repoDir, 'fake-bin')
-  const fakeCurlPath = path.join(fakeBinDir, 'curl')
   const fakeOpenPath = path.join(fakeBinDir, openerCommand)
-  const uploadLogPath = path.join(repoDir, 'fake-upload-payload.txt')
   const openLogPath = path.join(repoDir, 'fake-open-target.txt')
   mkdirSync(fakeBinDir, { recursive: true })
-  writeFakeNodeScript(fakeCurlPath, [
-    'const fs = require("node:fs")',
-    'const payload = fs.readFileSync(0, "utf8")',
-    `fs.writeFileSync(${JSON.stringify(uploadLogPath)}, payload, "utf8")`,
-    'process.stdout.write(JSON.stringify({ url: "https://zenbin.org/p/test-upload-open" }))',
-  ])
   writeFakeNodeScript(fakeOpenPath, [
     'const fs = require("node:fs")',
     `fs.writeFileSync(${JSON.stringify(openLogPath)}, process.argv.slice(2).join("\\n"), "utf8")`,
   ])
 
-  const result = runCli(['--upload'], {
+  const server = createServer((req, res) => {
+    let body = ''
+    req.on('data', (chunk) => { body += chunk })
+    req.on('end', () => {
+      res.setHeader('content-type', 'application/json')
+      res.end(JSON.stringify({ url: 'https://zenbin.org/p/test-upload-open' }))
+    })
+  })
+  await /** @type {Promise<void>} */ (
+    new Promise((resolve) => { server.listen(0, '127.0.0.1', resolve) })
+  )
+  t.after(() => { server.close() })
+  const address = server.address()
+  assert.ok(address && typeof address === 'object')
+  const apiBaseUrl = `http://127.0.0.1:${address.port}`
+
+  const result = await runCliAsync(['--upload'], {
     cwd: repoDir,
     noOpen: false,
     stdinData: '\n',
     env: {
       PATH: fakeBinDir + path.delimiter + process.env.PATH,
+      CODEOWNERS_AUDIT_ZENBIN_BASE_URL: apiBaseUrl,
     },
   })
 
   assert.equal(result.status, 0, result.stderr)
-  assert.ok(existsSync(uploadLogPath), 'fake curl should receive payload via stdin')
   assert.equal(readFileSync(openLogPath, 'utf8').trim(), 'https://zenbin.org/p/test-upload-open')
   assert.match(result.stdout, /Press Enter to open it in your browser/)
   assert.match(result.stdout, /Opened report in browser: https:\/\/zenbin\.org\/p\/test-upload-open/)
@@ -1077,29 +1093,13 @@ test('--upload opens uploaded URL in browser after Enter confirmation', (t) => {
 
 test('--upload fails with a clear message when the report is too large', (t) => {
   const repoDir = createRepo(t)
-  const fakeBinDir = path.join(repoDir, 'fake-bin')
-  const fakeCurlPath = path.join(fakeBinDir, 'curl')
-  const uploadLogPath = path.join(repoDir, 'fake-upload-payload.txt')
-  mkdirSync(fakeBinDir, { recursive: true })
-  writeFakeNodeScript(fakeCurlPath, [
-    'const fs = require("node:fs")',
-    'const payload = fs.readFileSync(0, "utf8")',
-    `fs.writeFileSync(${JSON.stringify(uploadLogPath)}, payload, "utf8")`,
-    'process.stdout.write(JSON.stringify({ url: "https://zenbin.org/p/should-not-run" }))',
-  ])
 
   addTrackedBulkFilesForStress(repoDir, ZENBIN_UPLOAD_STRESS_TARGET_BYTES)
 
-  const result = runCli(['--upload'], {
-    cwd: repoDir,
-    env: {
-      PATH: fakeBinDir + path.delimiter + process.env.PATH,
-    },
-  })
+  const result = runCli(['--upload'], { cwd: repoDir })
 
   assert.equal(result.status, 2)
   assert.match(result.stderr, /report is too large for ZenBin/)
-  assert.equal(existsSync(uploadLogPath), false, 'curl should not be called for oversized payloads')
 })
 
 // --- Remote repo (first positional argument) tests ---
