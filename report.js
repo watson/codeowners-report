@@ -24,6 +24,13 @@ const GITHUB_API_BASE_URL = 'https://api.github.com'
 const FILE_ANALYSIS_PROGRESS_INTERVAL = 20000
 const EXIT_CODE_UNCOVERED = 1
 const EXIT_CODE_RUNTIME_ERROR = 2
+const ANSI_RESET = '\u001b[0m'
+const ANSI_BOLD = '\u001b[1m'
+const ANSI_DIM = '\u001b[2m'
+const ANSI_RED = '\u001b[31m'
+const ANSI_GREEN = '\u001b[32m'
+const ANSI_YELLOW = '\u001b[33m'
+const ANSI_CYAN = '\u001b[36m'
 const packageVersion = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version
 const REPORT_TEMPLATE_PATH = new URL('./report.template.html', import.meta.url)
 const REPORT_DATA_PLACEHOLDER = '__REPORT_DATA_JSON__'
@@ -126,6 +133,7 @@ async function main () {
     const codeownersDescriptors = codeownersFilePaths
       .map(codeownersPath => loadCodeownersDescriptor(repoRoot, codeownersPath))
       .sort(compareCodeownersDescriptor)
+    const missingPathWarnings = collectMissingCodeownersPathWarnings(codeownersDescriptors, allRepoFiles)
 
     const scopeFilteredFiles = filterFilesByCliGlobs(allRepoFiles, options.checkGlobs)
 
@@ -139,6 +147,10 @@ async function main () {
     )
     progress('Scanning %d files against CODEOWNERS rules...', filesToAnalyze.length)
     const report = buildReport(repoRoot, filesToAnalyze, codeownersDescriptors, options, progress)
+    report.codeownersValidationMeta = {
+      missingPathWarnings,
+      missingPathWarningCount: missingPathWarnings.length,
+    }
     progress(
       'Coverage analysis complete: %d files, %d owned, %d unowned.',
       report.totals.files,
@@ -167,7 +179,10 @@ async function main () {
       writeFileSync(outputAbsolutePath, html, 'utf8')
     }
 
-    outputUnownedReportResults(report, options)
+    outputUnownedReportResults(report, {
+      ...options,
+      showCoverageSummary: options.noReport || !interactiveStdin,
+    })
 
     if (!options.noReport) {
       /** @type {string} */
@@ -185,7 +200,7 @@ async function main () {
         if (shouldOpen) {
           try {
             openReportInBrowser(reportLocation)
-            console.log('Opened report in browser: %s', reportLocation)
+            console.log('Opened report in browser.')
           } catch (error) {
             console.warn(
               'Could not open report in browser (%s). Re-run with --no-open to disable the open prompt.',
@@ -221,6 +236,7 @@ async function main () {
  *   noReport: boolean,
  *   listUnowned: boolean,
  *   failOnUnowned: boolean,
+ *   failOnMissingPaths: boolean,
  *   checkGlobs: string[],
  *   teamSuggestions: boolean,
  *   teamSuggestionsWindowDays: number,
@@ -249,6 +265,7 @@ function parseArgs (args) {
   let noReport = false
   let listUnowned = false
   let failOnUnowned = false
+  let failOnMissingPaths = false
   /** @type {string[]} */
   let checkGlobs = []
   let teamSuggestions = false
@@ -410,6 +427,11 @@ function parseArgs (args) {
       continue
     }
 
+    if (arg === '--fail-on-missing-paths') {
+      failOnMissingPaths = true
+      continue
+    }
+
     if (arg === '--glob' || arg === '-g') {
       checkGlobs.push(parseGlobOption(args[index + 1], '--glob'))
       index++
@@ -518,6 +540,7 @@ function parseArgs (args) {
     noReport,
     listUnowned,
     failOnUnowned,
+    failOnMissingPaths,
     checkGlobs,
     teamSuggestions,
     teamSuggestionsWindowDays,
@@ -706,6 +729,7 @@ function printUsage () {
     ['--no-report', 'Skip HTML report generation (implies --list-unowned)'],
     ['--list-unowned', 'Print unowned file paths to stdout'],
     ['--fail-on-unowned', 'Exit non-zero when one or more files are unowned'],
+    ['--fail-on-missing-paths', 'Exit non-zero when CODEOWNERS paths match no files'],
     ['-g, --glob <pattern>', 'Repeatable file filter for report/check scope (default: **)'],
     ['--suggest-teams', 'Suggest @org/team for uncovered directories'],
     ['--suggest-window-days <days>', `Git history lookback window for suggestions (default: ${TEAM_SUGGESTIONS_DEFAULT_WINDOW_DAYS})`],
@@ -815,6 +839,30 @@ function parseCsvListOption (value, optionName) {
 }
 
 /**
+ * Determine whether ANSI color output should be enabled for a stream.
+ * @param {{ isTTY?: boolean }} stream
+ * @returns {boolean}
+ */
+function shouldUseColorOutput (stream) {
+  if (process.env.NO_COLOR !== undefined) return false
+  if (process.env.FORCE_COLOR === '0') return false
+  if (process.env.FORCE_COLOR !== undefined) return true
+  return Boolean(stream && stream.isTTY)
+}
+
+/**
+ * Wrap text with ANSI color/style codes when enabled.
+ * @param {string} text
+ * @param {string[]} styles
+ * @param {boolean} enabled
+ * @returns {string}
+ */
+function colorizeCliText (text, styles, enabled) {
+  if (!enabled || styles.length === 0) return text
+  return `${styles.join('')}${text}${ANSI_RESET}`
+}
+
+/**
  * Return unique strings preserving insertion order.
  * @param {string[]} items
  * @returns {string[]}
@@ -866,18 +914,29 @@ function openReportInBrowser (target) {
 /**
  * Emit CLI results for unowned file reporting and failure gating.
  * Coverage summary is always printed.
- * Exit code 1 means uncovered files when fail-on-unowned is enabled.
+ * Exit code 1 means policy violations when fail flags are enabled.
  * @param {{
  *   totals: {
  *     files: number,
  *     unowned: number
  *   },
- *   unownedFiles: string[]
+ *   unownedFiles: string[],
+ *   codeownersValidationMeta?: {
+ *     missingPathWarnings?: {
+ *       codeownersPath: string,
+ *       scopedDir: string,
+ *       pattern: string,
+ *       owners: string[]
+ *     }[]
+ *   }
  * }} report
  * @param {{
+ *   noReport: boolean,
  *   listUnowned: boolean,
  *   failOnUnowned: boolean,
+ *   failOnMissingPaths: boolean,
  *   checkGlobs: string[],
+ *   showCoverageSummary?: boolean,
  * }} options
  * @returns {void}
  */
@@ -885,21 +944,53 @@ function outputUnownedReportResults (report, options) {
   const globListLabel = options.checkGlobs.length === 1
     ? JSON.stringify(options.checkGlobs[0])
     : JSON.stringify(options.checkGlobs)
+  const missingPathWarnings = Array.isArray(report.codeownersValidationMeta?.missingPathWarnings)
+    ? report.codeownersValidationMeta.missingPathWarnings
+    : []
+  const missingPathWarningCount = missingPathWarnings.length
+  const unknownFileCount = report.unownedFiles.length
+  const colorStdout = shouldUseColorOutput(process.stdout)
+  const colorStderr = shouldUseColorOutput(process.stderr)
 
-  if (options.listUnowned && report.unownedFiles.length > 0) {
-    console.log('Unowned files:')
+  if (options.listUnowned && unknownFileCount > 0) {
+    console.log(
+      colorizeCliText(`Unknown files (${unknownFileCount}):`, [ANSI_BOLD, ANSI_RED], colorStdout)
+    )
     for (const filePath of report.unownedFiles) {
-      console.log(filePath)
+      console.log(`- ${filePath}`)
     }
     console.log('')
   }
 
-  console.log(
-    'Coverage summary for globs %s: %d analyzed files, %d unowned.',
-    globListLabel,
-    report.totals.files,
-    report.totals.unowned
-  )
+  if (options.noReport && missingPathWarningCount > 0) {
+    console.error(
+      colorizeCliText(
+        `Missing CODEOWNERS paths (${missingPathWarningCount}):`,
+        [ANSI_BOLD, ANSI_YELLOW],
+        colorStderr
+      )
+    )
+    for (const warning of missingPathWarnings) {
+      console.error(
+        '- %s (from %s)',
+        colorizeCliText(warning.pattern, [ANSI_YELLOW], colorStderr),
+        colorizeCliText(warning.codeownersPath, [ANSI_DIM], colorStderr)
+      )
+    }
+    console.error('')
+  }
+
+  if (options.showCoverageSummary !== false) {
+    console.log(
+      [
+        colorizeCliText('Coverage summary:', [ANSI_BOLD, ANSI_CYAN], colorStdout),
+        `${colorizeCliText('globs:', [ANSI_DIM], colorStdout)} ${globListLabel}`,
+        `${colorizeCliText('analyzed files:', [ANSI_DIM], colorStdout)} ${colorizeCliText(String(report.totals.files), [ANSI_BOLD], colorStdout)}`,
+        `${colorizeCliText('unknown files:', [ANSI_DIM], colorStdout)} ${colorizeCliText(String(report.totals.unowned), report.totals.unowned > 0 ? [ANSI_BOLD, ANSI_RED] : [ANSI_BOLD, ANSI_GREEN], colorStdout)}`,
+        `${colorizeCliText('missing path warnings:', [ANSI_DIM], colorStdout)} ${colorizeCliText(String(missingPathWarningCount), missingPathWarningCount > 0 ? [ANSI_BOLD, ANSI_YELLOW] : [ANSI_BOLD, ANSI_GREEN], colorStdout)}`,
+      ].join('\n')
+    )
+  }
 
   if (options.failOnUnowned && report.unownedFiles.length > 0) {
     if (!options.listUnowned) {
@@ -908,6 +999,10 @@ function outputUnownedReportResults (report, options) {
         console.error('  - %s', filePath)
       }
     }
+    process.exitCode = EXIT_CODE_UNCOVERED
+  }
+
+  if (options.failOnMissingPaths && missingPathWarningCount > 0) {
     process.exitCode = EXIT_CODE_UNCOVERED
   }
 }
@@ -1295,6 +1390,66 @@ function compareCodeownersDescriptor (first, second) {
 }
 
 /**
+ * Build missing-path warnings for CODEOWNERS rules that match no repository files.
+ * @param {{
+ *   path: string,
+ *   dir: string,
+ *   rules: {
+ *     pattern: string,
+ *     owners: string[],
+ *     matches: (scopePath: string, repoPath: string) => boolean
+ *   }[]
+ * }[]} codeownersDescriptors
+ * @param {string[]} repoFiles
+ * @returns {{
+ *   codeownersPath: string,
+ *   scopedDir: string,
+ *   pattern: string,
+ *   owners: string[]
+ * }[]}
+ */
+function collectMissingCodeownersPathWarnings (codeownersDescriptors, repoFiles) {
+  /** @type {{
+   *   codeownersPath: string,
+   *   scopedDir: string,
+   *   pattern: string,
+   *   owners: string[]
+   * }[]} */
+  const warnings = []
+
+  for (const descriptor of codeownersDescriptors) {
+    const scopedFiles = descriptor.dir
+      ? repoFiles.filter((filePath) => pathIsInside(filePath, descriptor.dir))
+      : repoFiles
+
+    for (const rule of descriptor.rules) {
+      const hasMatch = scopedFiles.some((filePath) => {
+        const scopePath = descriptor.dir
+          ? filePath.slice(descriptor.dir.length + 1)
+          : filePath
+        return rule.matches(scopePath, filePath)
+      })
+
+      if (!hasMatch) {
+        warnings.push({
+          codeownersPath: descriptor.path,
+          scopedDir: descriptor.dir || '.',
+          pattern: rule.pattern,
+          owners: rule.owners,
+        })
+      }
+    }
+  }
+
+  warnings.sort((first, second) => {
+    const byPath = first.codeownersPath.localeCompare(second.codeownersPath)
+    if (byPath !== 0) return byPath
+    return first.pattern.localeCompare(second.pattern)
+  })
+  return warnings
+}
+
+/**
  * Build the report payload consumed by the HTML page.
  * @param {string} repoRoot
  * @param {string[]} files
@@ -1324,6 +1479,15 @@ function compareCodeownersDescriptor (first, second) {
  *   directories: { path: string, total: number, owned: number, unowned: number, coverage: number }[],
  *   unownedFiles: string[],
  *   teamOwnership: { team: string, total: number, files: string[] }[],
+ *   codeownersValidationMeta: {
+ *     missingPathWarnings: {
+ *       codeownersPath: string,
+ *       scopedDir: string,
+ *       pattern: string,
+ *       owners: string[]
+ *     }[],
+ *     missingPathWarningCount: number
+ *   },
  *   directoryTeamSuggestions: {
  *     path: string,
  *     status: string,
@@ -1442,6 +1606,10 @@ function buildReport (repoRoot, files, codeownersDescriptors, options, progress 
     directories,
     unownedFiles,
     teamOwnership: teamOwnershipRows,
+    codeownersValidationMeta: {
+      missingPathWarnings: [],
+      missingPathWarningCount: 0,
+    },
     directoryTeamSuggestions: [],
     directoryTeamSuggestionsMeta: {
       enabled: Boolean(options.teamSuggestions),
@@ -1612,6 +1780,15 @@ function toPercent (value, total) {
  *   directories: { path: string, total: number, owned: number, unowned: number, coverage: number }[],
  *   unownedFiles: string[],
  *   teamOwnership: { team: string, total: number, files: string[] }[],
+ *   codeownersValidationMeta: {
+ *     missingPathWarnings: {
+ *       codeownersPath: string,
+ *       scopedDir: string,
+ *       pattern: string,
+ *       owners: string[]
+ *     }[],
+ *     missingPathWarningCount: number
+ *   },
  *   directoryTeamSuggestions: {
  *     path: string,
  *     status: string,

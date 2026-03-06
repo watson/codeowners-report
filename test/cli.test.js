@@ -674,6 +674,99 @@ test('--fail-on-unowned exits non-zero when unowned files exist and still writes
   assert.match(result.stderr, /src\/unowned\.js/)
 })
 
+test('report includes missing CODEOWNERS path warnings in validation metadata', (t) => {
+  const repoDir = createRepo(t, {
+    codeowners: [
+      '/src/owned.js @team',
+      '/src/unowned.js @team',
+      '/CODEOWNERS @team',
+      '/does-not-exist.js @team',
+      '/missing-dir/ @team',
+    ].join('\n') + '\n',
+  })
+
+  const result = runCli(['--output', 'missing-path-warnings.html'], { cwd: repoDir })
+
+  assert.equal(result.status, 0, result.stderr)
+  const html = readFileSync(path.join(repoDir, 'missing-path-warnings.html'), 'utf8')
+  assert.match(html, /Patterns With No Matching Repository Paths/)
+  const reportData = parseReportDataFromHtml(html)
+  assert.equal(reportData.codeownersValidationMeta.missingPathWarningCount, 2)
+  assert.deepEqual(
+    reportData.codeownersValidationMeta.missingPathWarnings.map((warning) => warning.pattern),
+    ['/does-not-exist.js', '/missing-dir/']
+  )
+  assert.equal(reportData.codeownersValidationMeta.missingPathWarnings[0].codeownersPath, 'CODEOWNERS')
+  assert.doesNotMatch(result.stderr, /CODEOWNERS pattern\(s\) do not match any repository files/)
+})
+
+test('--no-report prints missing CODEOWNERS path warnings to stderr', (t) => {
+  const repoDir = createRepo(t, {
+    codeowners: [
+      '/src/owned.js @team',
+      '/src/unowned.js @team',
+      '/CODEOWNERS @team',
+      '/does-not-exist.js @team',
+    ].join('\n') + '\n',
+  })
+
+  const result = runCli(['--no-report'], { cwd: repoDir })
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stderr, /Missing CODEOWNERS paths \(1\):/)
+  assert.match(result.stderr, /\/does-not-exist\.js \(from CODEOWNERS\)/)
+  assert.match(
+    result.stdout,
+    /Coverage summary:\nglobs: "\*\*"\nanalyzed files: 3\nunknown files: 0\nmissing path warnings: 1/
+  )
+})
+
+test('--fail-on-missing-paths exits non-zero when CODEOWNERS paths are missing', (t) => {
+  const repoDir = createRepo(t, {
+    codeowners: [
+      '/src/owned.js @team',
+      '/src/unowned.js @team',
+      '/CODEOWNERS @team',
+      '/does-not-exist.js @team',
+    ].join('\n') + '\n',
+  })
+
+  const result = runCli(['--fail-on-missing-paths'], { cwd: repoDir })
+
+  assert.equal(result.status, 1)
+  assert.match(result.stdout, /Report ready at/)
+})
+
+test('--fail-on-missing-paths is repository-wide and not scoped by --glob', (t) => {
+  const repoDir = createRepo(t, {
+    codeowners: [
+      '/src/owned.js @team',
+      '/src/unowned.js @team',
+      '/CODEOWNERS @team',
+      '/does-not-exist.js @team',
+    ].join('\n') + '\n',
+  })
+
+  const result = runCli(['--fail-on-missing-paths', '--glob', 'src/owned.js'], { cwd: repoDir })
+
+  assert.equal(result.status, 1)
+  assert.doesNotMatch(result.stdout, /Coverage summary:/)
+})
+
+test('--fail-on-missing-paths passes when all CODEOWNERS paths match repository files', (t) => {
+  const repoDir = createRepo(t, {
+    codeowners: [
+      '/src/owned.js @team',
+      '/src/unowned.js @team',
+      '/CODEOWNERS @team',
+    ].join('\n') + '\n',
+  })
+
+  const result = runCli(['--fail-on-missing-paths'], { cwd: repoDir })
+
+  assert.equal(result.status, 0, result.stderr)
+})
+
 test('--no-open does not prompt to open report even with interactive stdin', (t) => {
   const repoDir = createRepo(t)
   const result = runCli(['--no-open'], {
@@ -704,10 +797,10 @@ test('--list-unowned prints unowned files to stdout', (t) => {
   const result = runCli(['--list-unowned'], { cwd: repoDir })
 
   assert.equal(result.status, 0, result.stderr)
-  assert.match(result.stdout, /Unowned files:/)
+  assert.match(result.stdout, /Unknown files \(\d+\):/)
   assert.match(result.stdout, /CODEOWNERS/)
   assert.match(result.stdout, /src\/unowned\.js/)
-  assert.match(result.stdout, /\n\nCoverage summary for globs/)
+  assert.doesNotMatch(result.stdout, /Coverage summary:/)
   assert.doesNotMatch(result.stderr, /CODEOWNERS check failed/)
 })
 
@@ -786,7 +879,7 @@ test('--glob filters files before ownership validation when fail-on-unowned is e
 
   const passingResult = runCli(['--fail-on-unowned', '-g', 'src/owned.js'], { cwd: repoDir })
   assert.equal(passingResult.status, 0, passingResult.stderr)
-  assert.match(passingResult.stdout, /Coverage summary for globs/)
+  assert.doesNotMatch(passingResult.stdout, /Coverage summary:/)
   assert.match(passingResult.stdout, /Report ready at/)
 
   const failingResult = runCli(['--fail-on-unowned', '--glob=src/*.js'], { cwd: repoDir })
@@ -830,7 +923,7 @@ test('directory CODEOWNERS pattern without trailing slash owns descendants', (t)
   const result = runCli(['--fail-on-unowned', '--glob', 'integration-tests/profiler/profiler.spec.js'], { cwd: repoDir })
 
   assert.equal(result.status, 0, result.stderr)
-  assert.match(result.stdout, /Coverage summary for globs/)
+  assert.doesNotMatch(result.stdout, /Coverage summary:/)
 })
 
 test('wildcard root pattern does not own nested descendants', (t) => {
@@ -858,7 +951,7 @@ test('wildcard in middle still allows directory descendant ownership', (t) => {
   const result = runCli(['--fail-on-unowned', '--glob', 'packages/dd-trace/test-crashtracking/crashtracker.spec.js'], { cwd: repoDir })
 
   assert.equal(result.status, 0, result.stderr)
-  assert.match(result.stdout, /Coverage summary for globs/)
+  assert.doesNotMatch(result.stdout, /Coverage summary:/)
 })
 
 test('top-level .github/CODEOWNERS applies rules repository-wide', (t) => {
@@ -915,6 +1008,7 @@ test('--help prints usage without failing', (t) => {
   assert.match(result.stdout, /--no-report/)
   assert.match(result.stdout, /--list-unowned/)
   assert.match(result.stdout, /--fail-on-unowned/)
+  assert.match(result.stdout, /--fail-on-missing-paths/)
   assert.match(result.stdout, /--glob/)
   assert.match(result.stdout, /-g, --glob <pattern>/)
   assert.match(result.stdout, /--suggest-teams/)
@@ -1088,7 +1182,7 @@ test('--upload opens uploaded URL in browser after Enter confirmation', async (t
   assert.equal(result.status, 0, result.stderr)
   assert.equal(readFileSync(openLogPath, 'utf8').trim(), 'https://zenbin.org/p/test-upload-open')
   assert.match(result.stdout, /Press Enter to open it in your browser/)
-  assert.match(result.stdout, /Opened report in browser: https:\/\/zenbin\.org\/p\/test-upload-open/)
+  assert.match(result.stdout, /Opened report in browser\./)
 })
 
 test('--upload fails with a clear message when the report is too large', async (t) => {

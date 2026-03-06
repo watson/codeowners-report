@@ -28,6 +28,7 @@ See how ownership coverage looks in practice with [this interactive report](http
 - Full unowned file list with scope and text filtering
 - Team ownership explorer with quick team chips and owned-file filtering
 - Supports multiple `CODEOWNERS` files in nested directories
+- Detects CODEOWNERS patterns that match no repository paths
 - Optional upload to [zenbin.org](https://zenbin.org) for easy sharing
 
 ## Installation
@@ -83,6 +84,7 @@ In interactive mode, `--no-report` implies `--list-unowned` so output still stay
 | `--no-report` | Skip HTML report generation (implies `--list-unowned`) |
 | `--list-unowned` | Print unowned file paths to stdout |
 | `--fail-on-unowned` | Exit non-zero when one or more files are unowned |
+| `--fail-on-missing-paths` | Exit non-zero when one or more CODEOWNERS paths match no repository files |
 | `-g, --glob <pattern>` | Repeatable file filter for report/check scope (default: `**`) |
 | `--suggest-teams` | Suggest `@org/team` for uncovered directories |
 | `--suggest-window-days <days>` | Git history lookback window for suggestions (default: `365`) |
@@ -139,7 +141,7 @@ In non-interactive environments, `codeowners-audit` automatically:
 
 Exit code behavior:
 - Exit code `0`: all matched files are covered by `CODEOWNERS`.
-- Exit code `1`: one or more matched files are uncovered.
+- Exit code `1`: one or more matched files are uncovered, or `--fail-on-missing-paths` is enabled and one or more CODEOWNERS paths match no repository files.
 - Exit code `2`: runtime/setup error (for example: not in a Git repository, missing `CODEOWNERS`, invalid arguments).
 
 ### Common CI commands
@@ -214,6 +216,7 @@ The generated page includes:
 - searchable list of unowned files
 - team ownership explorer for filtering files by `@org/team`
 - detected `CODEOWNERS` files and rule counts
+- warnings for CODEOWNERS patterns that match no repository paths
 
 The report is self-contained, so it can be opened directly from disk or shared after upload.
 

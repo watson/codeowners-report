@@ -224,6 +224,25 @@
       margin-bottom: 10px;
       background: rgba(0, 0, 0, 0.16);
     }
+    .validation-warnings {
+      margin-top: 14px;
+      border: 1px solid rgba(251, 191, 36, 0.45);
+      border-radius: 10px;
+      padding: 12px;
+      background: rgba(251, 191, 36, 0.1);
+    }
+    .validation-warnings h3 {
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+    .validation-warnings ul {
+      margin: 8px 0 0;
+      padding-left: 18px;
+    }
+    .validation-warnings li {
+      margin: 6px 0;
+      color: var(--text);
+    }
 
     table {
       width: 100%;
@@ -446,6 +465,11 @@
         </thead>
         <tbody id="codeowners-table-body"></tbody>
       </table>
+      <div id="missing-path-warnings" class="validation-warnings" hidden>
+        <h3>Patterns With No Matching Repository Paths</h3>
+        <p class="muted" id="missing-path-warnings-summary"></p>
+        <ul id="missing-path-warnings-list"></ul>
+      </div>
     </section>
   </div>
 
@@ -469,6 +493,10 @@
       const teamOwnershipRows = Array.isArray(report.teamOwnership) ? report.teamOwnership : []
       const suggestionRows = Array.isArray(report.directoryTeamSuggestions) ? report.directoryTeamSuggestions : []
       const suggestionMeta = report.directoryTeamSuggestionsMeta || { enabled: false, warnings: [] }
+      const codeownersValidationMeta = report.codeownersValidationMeta || {
+        missingPathWarnings: [],
+        missingPathWarningCount: 0,
+      }
       const suggestionByPath = new Map(suggestionRows.map((row) => [row.path, row]))
       const directoryRowByPath = new Map()
       const childrenByParent = new Map()
@@ -518,6 +546,7 @@
       document.getElementById('coverage-unowned').style.width = clamp(100 - report.totals.coverage) + '%'
 
       renderCodeownersFiles(report.codeownersFiles)
+      renderMissingPathWarnings(codeownersValidationMeta)
       directoryController = setupDirectoryTable(
         report.directories,
         suggestionByPath,
@@ -549,6 +578,34 @@
           tr.children[2].textContent = fmt.format(row.rules)
           body.appendChild(tr)
         }
+      }
+
+      function renderMissingPathWarnings (validationMeta) {
+        const container = document.getElementById('missing-path-warnings')
+        const summary = document.getElementById('missing-path-warnings-summary')
+        const list = document.getElementById('missing-path-warnings-list')
+        const warningRows = Array.isArray(validationMeta && validationMeta.missingPathWarnings)
+          ? validationMeta.missingPathWarnings
+          : []
+
+        list.innerHTML = ''
+        if (warningRows.length === 0) {
+          container.hidden = true
+          return
+        }
+
+        const warningCount = Number(validationMeta && validationMeta.missingPathWarningCount) || warningRows.length
+        summary.textContent = fmt.format(warningCount) +
+          ' CODEOWNERS pattern(s) do not match any repository file in the scanned repository scope.'
+
+        for (const warning of warningRows) {
+          const item = document.createElement('li')
+          item.textContent =
+            warning.pattern + ' (from ' + warning.codeownersPath + ')'
+          list.appendChild(item)
+        }
+
+        container.hidden = false
       }
 
       function setupDirectoryTable (allRows, suggestionLookup, suggestionContext, getScope, onScopeChange, getScopeDirectStats) {
