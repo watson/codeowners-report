@@ -770,6 +770,57 @@ test('missing CODEOWNERS path history links to the commit that first added the p
   assert.match(warning.history.addedAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.000Z$/)
 })
 
+test('missing CODEOWNERS path history follows CODEOWNERS file moves', (t) => {
+  const repoDir = createRepo(t, {
+    remoteUrl: 'git@github.com:test-org/test-repo.git',
+    codeowners: [
+      '/src/owned.js @team',
+      '/src/unowned.js @team',
+      '/does-not-exist.js @acme/platform',
+    ].join('\n') + '\n',
+  })
+
+  commitStaged(repoDir, 'add root codeowners pattern', 30, 'Alice', 'alice@example.com')
+  const initialCommitSha = execFileSync('git', ['rev-parse', 'HEAD'], {
+    cwd: repoDir,
+    encoding: 'utf8',
+  }).trim()
+
+  mkdirSync(path.join(repoDir, '.github'), { recursive: true })
+  runGit(repoDir, ['mv', 'CODEOWNERS', '.github/CODEOWNERS'])
+  commitStaged(repoDir, 'move codeowners file', 20, 'Bob', 'bob@example.com')
+
+  writeFileSync(
+    path.join(repoDir, '.github/CODEOWNERS'),
+    [
+      '/src/owned.js @team',
+      '/src/unowned.js @team',
+      '/does-not-exist.js @acme/platform @alice',
+    ].join('\n') + '\n',
+    'utf8'
+  )
+  runGit(repoDir, ['add', '.github/CODEOWNERS'])
+  commitStaged(repoDir, 'update moved codeowners owners', 10, 'Carol', 'carol@example.com')
+
+  const result = runCli(['--output', 'missing-path-history-follow.html'], { cwd: repoDir })
+
+  assert.equal(result.status, 0, result.stderr)
+  const reportData = parseReportDataFromHtml(
+    readFileSync(path.join(repoDir, 'missing-path-history-follow.html'), 'utf8')
+  )
+  const warning = reportData.codeownersValidationMeta.missingPathWarnings.find(
+    row => row.pattern === '/does-not-exist.js'
+  )
+  assert.ok(warning, 'missing path warning should be present after CODEOWNERS move')
+  assert.deepEqual(warning.owners, ['@acme/platform', '@alice'])
+  assert.ok(warning.history, 'missing path warning should include history metadata')
+  assert.equal(warning.history.commitSha, initialCommitSha)
+  assert.equal(
+    warning.history.commitUrl,
+    `https://github.com/test-org/test-repo/commit/${initialCommitSha}`
+  )
+})
+
 test('--no-report prints missing CODEOWNERS path warnings to stderr', (t) => {
   const repoDir = createRepo(t, {
     codeowners: [

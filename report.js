@@ -1693,14 +1693,19 @@ function collectCodeownersPatternHistory (repoRoot, codeownersDescriptor, repoWe
   let stdout
   try {
     stdout = runGitCommand(
-      ['log', '--reverse', '--format=%x1e%H%x00%ct', '-p', '--unified=0', '--no-ext-diff', '--', codeownersDescriptor.path],
+      ['log', '--follow', '--format=%x1e%H%x00%ct', '-p', '--unified=0', '--no-ext-diff', '--', codeownersDescriptor.path],
       repoRoot
     )
   } catch {
     return activeHistory
   }
 
-  for (const entry of stdout.split('\u001e')) {
+  const logEntries = stdout
+    .split('\u001e')
+    .filter(Boolean)
+    .reverse()
+
+  for (const entry of logEntries) {
     if (!entry) continue
     const normalizedEntry = entry.replace(/^\n+/, '')
     if (!normalizedEntry) continue
