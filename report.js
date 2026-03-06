@@ -79,12 +79,13 @@ async function main () {
       options.listUnowned = true
     }
 
+    let cloneUrl = null
     const remoteRepoUrl = options.repoOrPath !== undefined && isRepoUrl(options.repoOrPath)
       ? options.repoOrPath
       : undefined
 
     if (remoteRepoUrl !== undefined) {
-      const cloneUrl = normalizeRepoUrl(remoteRepoUrl)
+      cloneUrl = normalizeRepoUrl(remoteRepoUrl)
       const shallow = !options.teamSuggestions
 
       if (!shallow) {
@@ -132,19 +133,35 @@ async function main () {
       throw new Error(buildMissingSupportedCodeownersError(discoveredCodeownersPaths))
     }
 
+    const historyProgress = createProgressLogger(options.verbose)
     const codeownersDescriptor = loadCodeownersDescriptor(repoRoot, codeownersPath)
     const discoveryWarnings = collectCodeownersDiscoveryWarnings(discoveredCodeownersPaths, codeownersPath)
-    const repoWebUrl = resolveRepoWebUrl(repoRoot)
-    const missingPathHistoryByPattern = collectCodeownersPatternHistory(
-      repoRoot,
-      codeownersDescriptor,
-      repoWebUrl
-    )
-    const missingPathWarnings = collectMissingCodeownersPathWarnings(
-      codeownersDescriptor,
-      allRepoFiles,
-      missingPathHistoryByPattern
-    )
+    let missingPathWarnings = collectMissingCodeownersPathWarnings(codeownersDescriptor, allRepoFiles)
+    if (!options.noReport && missingPathWarnings.length > 0) {
+      const historyReady = await ensureCodeownersHistoryAvailability(
+        repoRoot,
+        {
+          allowFetch: Boolean(clonedTempDir),
+          interactive: interactiveStdin,
+          assumeYes: options.yes,
+          cloneUrl,
+          progress: historyProgress,
+        }
+      )
+      if (historyReady) {
+        const repoWebUrl = resolveRepoWebUrl(repoRoot)
+        const missingPathHistoryByPattern = collectCodeownersPatternHistory(
+          repoRoot,
+          codeownersDescriptor,
+          repoWebUrl
+        )
+        missingPathWarnings = collectMissingCodeownersPathWarnings(
+          codeownersDescriptor,
+          allRepoFiles,
+          missingPathHistoryByPattern
+        )
+      }
+    }
 
     const scopeFilteredFiles = filterFilesByCliGlobs(allRepoFiles, options.checkGlobs)
 
@@ -646,6 +663,27 @@ async function promptForReportOpen (target) {
  * @returns {Promise<boolean>}
  */
 async function promptForFullClone (url) {
+  return await promptForYesNo(`Proceed with full clone of ${url}? [y/N] `)
+}
+
+/**
+ * Prompt for confirmation before fetching additional history for CODEOWNERS
+ * pattern age and commit links from a shallow remote clone.
+ * @param {string} url
+ * @returns {Promise<boolean>}
+ */
+async function promptForCodeownersHistoryClone (url) {
+  return await promptForYesNo(
+    `Fetch full history for ${url} to show CODEOWNERS pattern age and commit links? [y/N] `
+  )
+}
+
+/**
+ * Prompt for a simple yes/no confirmation, defaulting to "no".
+ * @param {string} question
+ * @returns {Promise<boolean>}
+ */
+async function promptForYesNo (question) {
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -666,7 +704,7 @@ async function promptForFullClone (url) {
     })
 
     rl.question(
-      `Proceed with full clone of ${url}? [y/N] `,
+      question,
       (answer) => {
         settle(answer.trim().toLowerCase() === 'y')
       }
@@ -1268,6 +1306,70 @@ function runGitCommand (args, cwd) {
     stdio: ['ignore', 'pipe', 'pipe'],
     maxBuffer: GIT_COMMAND_MAX_BUFFER,
   })
+}
+
+/**
+ * Detect whether the repository is shallow.
+ * @param {string} repoRoot
+ * @returns {boolean}
+ */
+function isShallowRepository (repoRoot) {
+  try {
+    return runGitCommand(['rev-parse', '--is-shallow-repository'], repoRoot).trim() === 'true'
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Ensure CODEOWNERS history can be trusted before rendering blame-style links.
+ * For temp clones created from remote URLs we can safely deepen history.
+ * For user repositories we avoid mutating clone depth and simply skip history.
+ * @param {string} repoRoot
+ * @param {{
+ *   allowFetch?: boolean,
+ *   interactive?: boolean,
+ *   assumeYes?: boolean,
+ *   cloneUrl?: string|null,
+ *   progress?: (message: string, ...values: any[]) => void
+ * }} options
+ * @returns {Promise<boolean>}
+ */
+async function ensureCodeownersHistoryAvailability (repoRoot, options = {}) {
+  if (!isShallowRepository(repoRoot)) {
+    return true
+  }
+
+  if (!options.allowFetch) {
+    return false
+  }
+
+  if (!options.assumeYes) {
+    if (!options.interactive) {
+      return false
+    }
+    const targetLabel = options.cloneUrl || 'this repository'
+    console.log(
+      'Full repository history required to show CODEOWNERS pattern age and commit links ' +
+      '(this may take longer).'
+    )
+    const confirmed = await promptForCodeownersHistoryClone(targetLabel)
+    if (!confirmed) {
+      console.log('Skipping CODEOWNERS history links.')
+      return false
+    }
+  }
+
+  try {
+    if (typeof options.progress === 'function') {
+      options.progress('Deepening shallow clone to resolve CODEOWNERS history...')
+    }
+    runGitCommand(['fetch', '--quiet', '--unshallow'], repoRoot)
+  } catch {
+    return false
+  }
+
+  return !isShallowRepository(repoRoot)
 }
 
 /**

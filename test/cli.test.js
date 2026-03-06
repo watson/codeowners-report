@@ -1636,6 +1636,116 @@ test('first positional as remote URL cleans up the temp clone', (t) => {
   assert.match(result.stdout, /Cloning/)
 })
 
+test('remote clone skips missing path history when the full-history prompt is declined', (t) => {
+  const repoDir = createRepo(t, {
+    codeowners: [
+      '/src/owned.js @team',
+      '/src/unowned.js @team',
+      '/does-not-exist.js @acme/platform',
+    ].join('\n') + '\n',
+  })
+
+  commitStaged(repoDir, 'add missing path pattern', 20, 'Alice', 'alice@example.com')
+
+  writeFileSync(path.join(repoDir, 'README.md'), '# test repo\n', 'utf8')
+  runGit(repoDir, ['add', 'README.md'])
+  commitStaged(repoDir, 'latest unrelated change', 0, 'Bob', 'bob@example.com')
+
+  const bareDir = mkdtempSync(path.join(tmpdir(), 'cotest-bare-'))
+  t.after(() => {
+    rmSync(bareDir, { recursive: true, force: true })
+  })
+  execFileSync('git', ['clone', '--bare', repoDir, bareDir], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+
+  const outputDir = mkdtempSync(path.join(tmpdir(), 'codeowners-audit-remote-history-out-'))
+  t.after(() => {
+    rmSync(outputDir, { recursive: true, force: true })
+  })
+  const outputFile = path.join(outputDir, 'remote-history-report.html')
+
+  const result = runCli([`file://${bareDir}`, '--output', outputFile], { stdinData: 'n\n' })
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(
+    result.stdout,
+    /Full repository history required to show CODEOWNERS pattern age and commit links/
+  )
+  assert.match(
+    result.stdout,
+    /Fetch full history for file:\/\/.+ to show CODEOWNERS pattern age and commit links\? \[y\/N\]/
+  )
+  const reportData = parseReportDataFromHtml(readFileSync(outputFile, 'utf8'))
+  const warning = reportData.codeownersValidationMeta.missingPathWarnings.find(
+    row => row.pattern === '/does-not-exist.js'
+  )
+  assert.ok(warning, 'missing path warning should be present in remote clone report')
+  assert.equal(
+    Object.hasOwn(warning, 'history'),
+    false,
+    'history should be omitted when the full-history prompt is declined'
+  )
+})
+
+test('remote clone deepens history before linking missing CODEOWNERS patterns when confirmed', (t) => {
+  const repoDir = createRepo(t, {
+    codeowners: [
+      '/src/owned.js @team',
+      '/src/unowned.js @team',
+      '/does-not-exist.js @acme/platform',
+    ].join('\n') + '\n',
+  })
+
+  commitStaged(repoDir, 'add missing path pattern', 20, 'Alice', 'alice@example.com')
+  const initialCommitSha = execFileSync('git', ['rev-parse', 'HEAD'], {
+    cwd: repoDir,
+    encoding: 'utf8',
+  }).trim()
+
+  writeFileSync(path.join(repoDir, 'README.md'), '# test repo\n', 'utf8')
+  runGit(repoDir, ['add', 'README.md'])
+  commitStaged(repoDir, 'latest unrelated change', 0, 'Bob', 'bob@example.com')
+
+  const bareDir = mkdtempSync(path.join(tmpdir(), 'cotest-bare-'))
+  t.after(() => {
+    rmSync(bareDir, { recursive: true, force: true })
+  })
+  execFileSync('git', ['clone', '--bare', repoDir, bareDir], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+
+  const outputDir = mkdtempSync(path.join(tmpdir(), 'codeowners-audit-remote-history-out-'))
+  t.after(() => {
+    rmSync(outputDir, { recursive: true, force: true })
+  })
+  const outputFile = path.join(outputDir, 'remote-history-report.html')
+
+  const result = runCli([`file://${bareDir}`, '--output', outputFile], { stdinData: 'y\n' })
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(
+    result.stdout,
+    /Full repository history required to show CODEOWNERS pattern age and commit links/
+  )
+  assert.match(
+    result.stdout,
+    /Fetch full history for file:\/\/.+ to show CODEOWNERS pattern age and commit links\? \[y\/N\]/
+  )
+  const reportData = parseReportDataFromHtml(readFileSync(outputFile, 'utf8'))
+  const warning = reportData.codeownersValidationMeta.missingPathWarnings.find(
+    row => row.pattern === '/does-not-exist.js'
+  )
+  assert.ok(warning, 'missing path warning should be present in remote clone report')
+  assert.ok(warning.history, 'missing path warning should include history metadata')
+  assert.equal(
+    warning.history.commitSha,
+    initialCommitSha,
+    'history should resolve the original CODEOWNERS add commit rather than the shallow-clone tip commit'
+  )
+  assert.equal(Object.hasOwn(warning.history, 'commitUrl'), false)
+})
+
 test('--yes skips full-clone confirmation for remote --suggest-teams runs', (t) => {
   const remoteUrl = createBareRemoteRepo(t)
 
