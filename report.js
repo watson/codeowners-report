@@ -6,6 +6,12 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import readline from 'node:readline'
+import {
+  parseCodeowners,
+  parseCodeownersRuleLine,
+  createPatternMatcher,
+  findMatchingOwners,
+} from './lib/codeowners-parser.js'
 import { runGitCommand, toPosixPath, formatCommandError } from './lib/git.js'
 import { createProgressLogger } from './lib/progress.js'
 import {
@@ -1506,154 +1512,6 @@ function loadCodeownersDescriptor (repoRoot, codeownersPath) {
 }
 
 /**
- * Parse CODEOWNERS content into rule matchers.
- * @param {string} fileContent
- * @returns {{ pattern: string, owners: string[], matches: (repoPath: string) => boolean }[]}
- */
-function parseCodeowners (fileContent) {
-  const lines = fileContent.split(/\r?\n/)
-  const rules = []
-
-  for (const line of lines) {
-    const parsedRule = parseCodeownersRuleLine(line)
-    if (!parsedRule) continue
-
-    rules.push({
-      pattern: parsedRule.pattern,
-      owners: parsedRule.owners,
-      matches: createPatternMatcher(parsedRule.pattern, { includeDescendants: true }),
-    })
-  }
-
-  return rules
-}
-
-/**
- * Parse a single CODEOWNERS rule line, ignoring blank lines, comments,
- * malformed rows, and unsupported negation patterns.
- * @param {string} line
- * @returns {{ pattern: string, owners: string[] }|null}
- */
-function parseCodeownersRuleLine (line) {
-  const withoutComment = stripInlineComment(line).trim()
-  if (!withoutComment) return null
-
-  const tokens = tokenizeCodeownersLine(withoutComment).map(unescapeToken)
-  if (tokens.length < 2) return null
-
-  const pattern = tokens[0]
-  const owners = tokens.slice(1).filter(Boolean)
-  if (!owners.length) return null
-  if (pattern.startsWith('!')) return null // Negation is not supported in CODEOWNERS.
-
-  return { pattern, owners }
-}
-
-/**
- * Remove inline comments, preserving escaped "#".
- * @param {string} line
- * @returns {string}
- */
-function stripInlineComment (line) {
-  let escaped = false
-  for (let index = 0; index < line.length; index++) {
-    const char = line[index]
-    if (char === '#' && !escaped) {
-      return line.slice(0, index)
-    }
-
-    escaped = char === '\\' && !escaped
-    if (char !== '\\') {
-      escaped = false
-    }
-  }
-  return line
-}
-
-/**
- * Split a CODEOWNERS line into tokens while preserving escaped spaces.
- * @param {string} line
- * @returns {string[]}
- */
-function tokenizeCodeownersLine (line) {
-  return line.match(/(?:\\.|[^\s])+/g) || []
-}
-
-/**
- * Unescape CODEOWNERS token sequences.
- * @param {string} token
- * @returns {string}
- */
-function unescapeToken (token) {
-  return token.replaceAll(/\\(.)/g, '$1')
-}
-
-/**
- * Build a matcher for a CODEOWNERS pattern.
- * @param {string} rawPattern
- * @returns {(repoPath: string) => boolean}
- */
-function createPatternMatcher (rawPattern, options = {}) {
-  const includeDescendants = Boolean(options.includeDescendants)
-  const directoryOnly = rawPattern.endsWith('/')
-  const anchored = rawPattern.startsWith('/')
-  const pattern = rawPattern.replace(/^\/+/, '').replace(/\/+$/, '')
-  if (!pattern) {
-    return () => false
-  }
-
-  const patternSource = globToRegexSource(pattern)
-  const lastSegment = pattern.split('/').at(-1) || ''
-  const lastSegmentHasWildcards = lastSegment.includes('*') || lastSegment.includes('?')
-  const descendantSuffix = (directoryOnly || (includeDescendants && !lastSegmentHasWildcards)) ? '(?:/.*)?' : ''
-  if (anchored) {
-    const anchoredRegex = new RegExp(`^${patternSource}${descendantSuffix}$`)
-    return (repoPath) => anchoredRegex.test(repoPath)
-  }
-
-  const unanchoredRegex = new RegExp(`(?:^|/)${patternSource}${descendantSuffix}$`)
-  return (repoPath) => unanchoredRegex.test(repoPath)
-}
-
-/**
- * Convert a glob-like CODEOWNERS pattern to regex source.
- * @param {string} pattern
- * @returns {string}
- */
-function globToRegexSource (pattern) {
-  let source = ''
-  for (let index = 0; index < pattern.length; index++) {
-    const char = pattern[index]
-    if (char === '*') {
-      if (pattern[index + 1] === '*') {
-        source += '.*'
-        index++
-      } else {
-        source += '[^/]*'
-      }
-      continue
-    }
-
-    if (char === '?') {
-      source += '[^/]'
-      continue
-    }
-
-    source += escapeRegexChar(char)
-  }
-  return source
-}
-
-/**
- * Escape regex-special characters.
- * @param {string} char
- * @returns {string}
- */
-function escapeRegexChar (char) {
-  return /[\\^$.*+?()[\]{}|]/.test(char) ? `\\${char}` : char
-}
-
-/**
  * Build missing-path warnings for CODEOWNERS rules that match no repository files.
  * @param {{
  *   path: string,
@@ -1967,7 +1825,7 @@ function buildReport (repoRoot, files, codeownersDescriptor, options, progress =
 
   for (let fileIndex = 0; fileIndex < files.length; fileIndex++) {
     const filePath = files[fileIndex]
-    const owners = resolveOwners(filePath, codeownersDescriptor.rules)
+    const owners = findMatchingOwners(filePath, codeownersDescriptor.rules)
     const isOwned = Array.isArray(owners) && owners.length > 0
     const teamOwners = collectTeamOwners(owners)
 
@@ -2094,36 +1952,6 @@ function collectTeamOwners (owners) {
 function looksLikeTeamOwner (owner) {
   if (typeof owner !== 'string') return false
   return /^@[^/\s]+\/[^/\s]+$/.test(owner.trim())
-}
-
-/**
- * Resolve matching owners for a file using the active CODEOWNERS rules.
- * @param {string} filePath
- * @param {{
- *   owners: string[],
- *   matches: (repoPath: string) => boolean
- * }[]} codeownersRules
- * @returns {string[]|undefined}
- */
-function resolveOwners (filePath, codeownersRules) {
-  return findMatchingOwners(filePath, codeownersRules)
-}
-
-/**
- * Find the last matching owners in a ruleset.
- * @param {string} repoPath
- * @param {{ owners: string[], matches: (repoPath: string) => boolean }[]} rules
- * @returns {string[]|undefined}
- */
-function findMatchingOwners (repoPath, rules) {
-  /** @type {string[]|undefined} */
-  let owners
-  for (const rule of rules) {
-    if (rule.matches(repoPath)) {
-      owners = rule.owners
-    }
-  }
-  return owners
 }
 
 /**
