@@ -5,12 +5,12 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import readline from 'node:readline'
 import {
   parseArgs,
   printUsage,
   UPLOAD_PROVIDER,
 } from './lib/cli-args.js'
+import { outputUnownedReportResults } from './lib/cli-output.js'
 import {
   parseCodeowners,
   parseCodeownersRuleLine,
@@ -18,6 +18,13 @@ import {
 } from './lib/codeowners-parser.js'
 import { runGitCommand, toPosixPath, formatCommandError } from './lib/git.js'
 import { createProgressLogger } from './lib/progress.js'
+import {
+  isInteractiveStdin,
+  promptForFullClone,
+  promptForCodeownersHistoryClone,
+  promptForReportOpen,
+  openReportInBrowser,
+} from './lib/prompts.js'
 import { buildReport, FILE_ANALYSIS_PROGRESS_INTERVAL } from './lib/report-builder.js'
 import { renderHtml, packageVersion } from './lib/report-renderer.js'
 import {
@@ -29,15 +36,7 @@ import { collectDirectoryTeamSuggestions } from './lib/team-suggestions.js'
 import { uploadReport } from './lib/upload.js'
 const SUPPORTED_CODEOWNERS_PATHS = ['.github/CODEOWNERS', 'CODEOWNERS', 'docs/CODEOWNERS']
 const SUPPORTED_CODEOWNERS_PATHS_LABEL = SUPPORTED_CODEOWNERS_PATHS.join(', ')
-const EXIT_CODE_UNCOVERED = 1
 const EXIT_CODE_RUNTIME_ERROR = 2
-const ANSI_RESET = '\u001b[0m'
-const ANSI_BOLD = '\u001b[1m'
-const ANSI_DIM = '\u001b[2m'
-const ANSI_RED = '\u001b[31m'
-const ANSI_GREEN = '\u001b[32m'
-const ANSI_YELLOW = '\u001b[33m'
-const ANSI_CYAN = '\u001b[36m'
 
 main()
 
@@ -252,302 +251,6 @@ async function main () {
 }
 
 /**
- * Determine whether stdin is interactive.
- * The env override exists to keep automated tests deterministic.
- * @returns {boolean}
- */
-function isInteractiveStdin () {
-  if (process.env.CODEOWNERS_AUDIT_ASSUME_TTY === '1') return true
-  if (process.env.CODEOWNERS_AUDIT_ASSUME_TTY === '0') return false
-  return Boolean(process.stdin.isTTY)
-}
-
-/**
- * Prompt for permission before opening the report in a browser.
- * @param {string} target
- * @returns {Promise<boolean>}
- */
-async function promptForReportOpen (target) {
-  if (!isInteractiveStdin()) return false
-
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  })
-
-  return await new Promise((resolve) => {
-    let settled = false
-    const settle = (value) => {
-      if (settled) return
-      settled = true
-      rl.close()
-      resolve(value)
-    }
-
-    rl.on('SIGINT', () => {
-      process.stdout.write('\n')
-      console.log('Skipped opening report in browser.')
-      settle(false)
-    })
-
-    rl.question(
-      'Press Enter to open it in your browser (Ctrl+C to cancel): ',
-      (answer) => {
-        if (answer.trim() === '') {
-          settle(true)
-          return
-        }
-
-        console.log('Skipped opening report in browser.')
-        settle(false)
-      }
-    )
-  })
-}
-
-/**
- * Prompt for confirmation before a full repository clone.
- * @param {string} url
- * @returns {Promise<boolean>}
- */
-async function promptForFullClone (url) {
-  return await promptForYesNo(`Proceed with full clone of ${url}? [y/N] `)
-}
-
-/**
- * Prompt for confirmation before fetching additional history for CODEOWNERS
- * pattern age and commit links from a shallow remote clone.
- * @param {string} url
- * @returns {Promise<boolean>}
- */
-async function promptForCodeownersHistoryClone (url) {
-  return await promptForYesNo(
-    `Fetch full history for ${url} to show CODEOWNERS pattern age and commit links? [y/N] `
-  )
-}
-
-/**
- * Prompt for a simple yes/no confirmation, defaulting to "no".
- * @param {string} question
- * @returns {Promise<boolean>}
- */
-async function promptForYesNo (question) {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  })
-
-  return await new Promise((resolve) => {
-    let settled = false
-    const settle = (value) => {
-      if (settled) return
-      settled = true
-      rl.close()
-      resolve(value)
-    }
-
-    rl.on('SIGINT', () => {
-      process.stdout.write('\n')
-      settle(false)
-    })
-
-    rl.question(
-      question,
-      (answer) => {
-        settle(answer.trim().toLowerCase() === 'y')
-      }
-    )
-  })
-}
-
-
-/**
- * Determine whether ANSI color output should be enabled for a stream.
- * @param {{ isTTY?: boolean }} stream
- * @returns {boolean}
- */
-function shouldUseColorOutput (stream) {
-  if (process.env.NO_COLOR !== undefined) return false
-  if (process.env.FORCE_COLOR === '0') return false
-  if (process.env.FORCE_COLOR !== undefined) return true
-  return Boolean(stream && stream.isTTY)
-}
-
-/**
- * Wrap text with ANSI color/style codes when enabled.
- * @param {string} text
- * @param {string[]} styles
- * @param {boolean} enabled
- * @returns {string}
- */
-function colorizeCliText (text, styles, enabled) {
-  if (!enabled || styles.length === 0) return text
-  return `${styles.join('')}${text}${ANSI_RESET}`
-}
-
-/**
- * Open a report target in the system browser.
- * @param {string} target
- * @returns {void}
- */
-function openReportInBrowser (target) {
-  if (process.platform === 'darwin') {
-    execFileSync('open', [target], {
-      stdio: ['ignore', 'ignore', 'pipe'],
-    })
-    return
-  }
-
-  if (process.platform === 'win32') {
-    execFileSync('cmd', ['/c', 'start', '', target], {
-      windowsHide: true,
-      stdio: ['ignore', 'ignore', 'pipe'],
-    })
-    return
-  }
-
-  execFileSync('xdg-open', [target], {
-    stdio: ['ignore', 'ignore', 'pipe'],
-  })
-}
-
-/**
- * Emit CLI results for unowned file reporting and failure gating.
- * Coverage summary is always printed.
- * Exit code 1 means policy violations when fail flags are enabled.
- * @param {{
- *   totals: {
- *     files: number,
- *     unowned: number
- *   },
- *   codeownersFiles?: {
- *     path: string,
- *     rules: number
- *   }[],
- *   unownedFiles: string[],
- *   codeownersValidationMeta?: {
- *     discoveryWarnings?: {
- *       path: string,
- *       type: 'unused-supported-location'|'unsupported-location',
- *       referencePath?: string,
- *       message: string
- *     }[],
- *     missingPathWarnings?: {
- *       codeownersPath: string,
- *       pattern: string,
- *       owners: string[],
- *       history?: {
- *         addedAt: string,
- *         commitSha: string,
- *         commitUrl?: string
- *       }
- *     }[]
- *   }
- * }} report
- * @param {{
- *   noReport: boolean,
- *   listUnowned: boolean,
- *   failOnUnowned: boolean,
- *   failOnMissingPaths: boolean,
- *   failOnLocationWarnings: boolean,
- *   checkGlobs: string[],
- *   showCoverageSummary?: boolean,
- * }} options
- * @returns {void}
- */
-function outputUnownedReportResults (report, options) {
-  const globListLabel = options.checkGlobs.length === 1
-    ? JSON.stringify(options.checkGlobs[0])
-    : JSON.stringify(options.checkGlobs)
-  const activeCodeownersPath = Array.isArray(report.codeownersFiles) && report.codeownersFiles[0]
-    ? report.codeownersFiles[0].path
-    : null
-  const discoveryWarnings = Array.isArray(report.codeownersValidationMeta?.discoveryWarnings)
-    ? report.codeownersValidationMeta.discoveryWarnings
-    : []
-  const locationWarningCount = discoveryWarnings.length
-  const missingPathWarnings = Array.isArray(report.codeownersValidationMeta?.missingPathWarnings)
-    ? report.codeownersValidationMeta.missingPathWarnings
-    : []
-  const missingPathWarningCount = missingPathWarnings.length
-  const unknownFileCount = report.unownedFiles.length
-  const colorStdout = shouldUseColorOutput(process.stdout)
-  const colorStderr = shouldUseColorOutput(process.stderr)
-
-  if (options.listUnowned && unknownFileCount > 0) {
-    console.log(
-      colorizeCliText(`Unknown files (${unknownFileCount}):`, [ANSI_BOLD, ANSI_RED], colorStdout)
-    )
-    for (const filePath of report.unownedFiles) {
-      console.log(`- ${filePath}`)
-    }
-    console.log('')
-  }
-
-  if (options.noReport && missingPathWarningCount > 0) {
-    console.error(
-      colorizeCliText(
-        `Missing CODEOWNERS paths (${missingPathWarningCount}):`,
-        [ANSI_BOLD, ANSI_YELLOW],
-        colorStderr
-      )
-    )
-    for (const warning of missingPathWarnings) {
-      console.error('%s', formatMissingPathWarningForCli(warning, colorStderr))
-    }
-    console.error('')
-  }
-
-  if (options.noReport && locationWarningCount > 0) {
-    console.error(
-      colorizeCliText(
-        `CODEOWNERS location warnings (${locationWarningCount}):`,
-        [ANSI_BOLD, ANSI_YELLOW],
-        colorStderr
-      )
-    )
-    for (const warning of discoveryWarnings) {
-      console.error('%s', formatCodeownersDiscoveryWarningForCli(warning, colorStderr))
-    }
-    console.error('')
-  }
-
-  if (options.showCoverageSummary !== false) {
-    console.log(
-      [
-        colorizeCliText('Coverage summary:', [ANSI_BOLD, ANSI_CYAN], colorStdout),
-        `${colorizeCliText('globs:', [ANSI_DIM], colorStdout)} ${globListLabel}`,
-        ...(activeCodeownersPath
-          ? [`${colorizeCliText('codeowners file:', [ANSI_DIM], colorStdout)} ${colorizeCliText(activeCodeownersPath, [ANSI_BOLD], colorStdout)}`]
-          : []),
-        `${colorizeCliText('analyzed files:', [ANSI_DIM], colorStdout)} ${colorizeCliText(String(report.totals.files), [ANSI_BOLD], colorStdout)}`,
-        `${colorizeCliText('unknown files:', [ANSI_DIM], colorStdout)} ${colorizeCliText(String(report.totals.unowned), report.totals.unowned > 0 ? [ANSI_BOLD, ANSI_RED] : [ANSI_BOLD, ANSI_GREEN], colorStdout)}`,
-        `${colorizeCliText('missing path warnings:', [ANSI_DIM], colorStdout)} ${colorizeCliText(String(missingPathWarningCount), missingPathWarningCount > 0 ? [ANSI_BOLD, ANSI_YELLOW] : [ANSI_BOLD, ANSI_GREEN], colorStdout)}`,
-        `${colorizeCliText('location warnings:', [ANSI_DIM], colorStdout)} ${colorizeCliText(String(locationWarningCount), locationWarningCount > 0 ? [ANSI_BOLD, ANSI_YELLOW] : [ANSI_BOLD, ANSI_GREEN], colorStdout)}`,
-      ].join('\n')
-    )
-  }
-
-  if (options.failOnUnowned && report.unownedFiles.length > 0) {
-    if (!options.listUnowned) {
-      console.error('')
-      for (const filePath of report.unownedFiles) {
-        console.error('  - %s', filePath)
-      }
-    }
-    process.exitCode = EXIT_CODE_UNCOVERED
-  }
-
-  if (options.failOnMissingPaths && missingPathWarningCount > 0) {
-    process.exitCode = EXIT_CODE_UNCOVERED
-  }
-
-  if (options.failOnLocationWarnings && locationWarningCount > 0) {
-    process.exitCode = EXIT_CODE_UNCOVERED
-  }
-}
-
-/**
  * Build a file matcher for CLI check globs.
  * @param {string[]} patterns
  * @returns {(filePath: string) => boolean}
@@ -649,71 +352,6 @@ function listRepoFiles (includeUntracked, repoRoot) {
     .map(filePath => filePath.trim())
     .filter(Boolean)
     .map(toPosixPath)
-}
-
-/**
- * Format a CODEOWNERS discovery warning for CLI output.
- * @param {{
- *   path: string,
- *   type: 'unused-supported-location'|'unsupported-location',
- *   referencePath?: string,
- *   message: string
- * }} warning
- * @param {boolean} useColor
- * @returns {string}
- */
-function formatCodeownersDiscoveryWarningForCli (warning, useColor) {
-  const bullet = colorizeCliText('- ', [ANSI_DIM], useColor)
-  const warningPath = colorizeCliText(warning.path, [ANSI_YELLOW], useColor)
-  const warningText = colorizeCliText(
-    warning.type === 'unused-supported-location'
-      ? ' is unused because GitHub selects '
-      : ' is in an unsupported location and is ignored by GitHub.',
-    [ANSI_DIM],
-    useColor
-  )
-
-  if (warning.type === 'unused-supported-location' && warning.referencePath) {
-    const referencePath = colorizeCliText(warning.referencePath, [ANSI_CYAN], useColor)
-    const trailingText = colorizeCliText(' first.', [ANSI_DIM], useColor)
-    return bullet + warningPath + warningText + referencePath + trailingText
-  }
-
-  return bullet + warningPath + warningText
-}
-
-/**
- * Format a missing CODEOWNERS path warning for CLI output.
- * @param {{
- *   codeownersPath: string,
- *   pattern: string,
- *   owners: string[],
- *   history?: {
- *     addedAt: string,
- *     commitSha: string,
- *     commitUrl?: string
- *   }
- * }} warning
- * @param {boolean} useColor
- * @returns {string}
- */
-function formatMissingPathWarningForCli (warning, useColor) {
-  const bullet = colorizeCliText('- ', [ANSI_DIM], useColor)
-  const warningPath = colorizeCliText(warning.pattern, [ANSI_YELLOW], useColor)
-  const ownerLabel = colorizeCliText(' owners: ', [ANSI_DIM], useColor)
-  const ownerList = formatCodeownersOwnersList(warning.owners)
-  const ownerText = colorizeCliText(ownerList, [ANSI_CYAN], useColor)
-  return bullet + warningPath + ownerLabel + ownerText
-}
-
-/**
- * Format a CODEOWNERS owner list for human-readable output.
- * @param {string[]|undefined} owners
- * @returns {string}
- */
-function formatCodeownersOwnersList (owners) {
-  if (!Array.isArray(owners) || owners.length === 0) return '(none)'
-  return owners.join(', ')
 }
 
 /**
