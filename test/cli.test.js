@@ -231,7 +231,7 @@ test('running the bin creates a report in temp dir with expected shape', (t) => 
   assert.deepEqual(reportData.directoryTeamSuggestionsMeta.ignoredTeams, [])
 })
 
-test('report includes team ownership index for @org/team owners', (t) => {
+test('report includes ownership index for @org/team and @username owners', (t) => {
   const repoDir = createRepo(t, {
     codeowners: [
       '/src/owned.js @acme/platform @alice',
@@ -259,7 +259,10 @@ test('report includes team ownership index for @org/team owners', (t) => {
   assert.equal(security.total, 1)
   assert.deepEqual(security.files, ['src/dual.js'])
 
-  assert.equal(reportData.teamOwnership.some(row => row.team === '@alice'), false)
+  const alice = reportData.teamOwnership.find(row => row.team === '@alice')
+  assert.ok(alice, 'individual user @alice should exist')
+  assert.equal(alice.total, 1)
+  assert.deepEqual(alice.files, ['src/owned.js'])
 })
 
 test('team suggestions map editors to repo teams for 0% covered directories', async (t) => {

@@ -482,13 +482,13 @@
 
     <section class="panel">
       <div class="header">
-        <h2>Team Ownership Explorer</h2>
-        <p class="muted">Select a team to view the files it currently owns</p>
+        <h2>Ownership Explorer</h2>
+        <p class="muted">Select an owner to view the files they own</p>
       </div>
       <div class="team-empty muted" id="team-empty-state"></div>
       <div class="controls field-controls team-controls">
-        <select id="team-select" aria-label="Select team"></select>
-        <input id="team-file-filter" type="text" placeholder="Filter selected team's owned files..." />
+        <select id="team-select" aria-label="Select owner"></select>
+        <input id="team-file-filter" type="text" placeholder="Filter selected owner's files..." />
       </div>
       <div class="team-chip-list" id="team-chip-list"></div>
       <div class="file-list" id="team-file-list"></div>
@@ -1143,7 +1143,7 @@
         let selectedTeam = safeRows.length > 0 ? safeRows[0].team : ''
 
         if (safeRows.length === 0) {
-          emptyState.textContent = 'No GitHub team owners found in resolved CODEOWNERS matches. Team ownership appears when owners use @org/team.'
+          emptyState.textContent = 'No @-prefixed owners found in resolved CODEOWNERS matches. Ownership entries appear when rules use @org/team or @username.'
           teamSelect.disabled = true
           fileFilter.disabled = true
           chipList.innerHTML = ''
@@ -1156,7 +1156,7 @@
         for (const row of safeRows) {
           const option = document.createElement('option')
           option.value = row.team
-          option.textContent = row.team + ' (' + fmt.format(row.total) + ' files)'
+          option.textContent = row.team + ' \u2014 ' + fmt.format(row.total) + ' files'
           teamSelect.appendChild(option)
         }
 
@@ -1205,7 +1205,7 @@
           const shown = filteredFiles.slice(0, 6000)
 
           list.textContent = shown.join('\n') || '(none)'
-          count.textContent = 'Team: ' + selectedRow.team + ' — scope: ' + (scope || '(root)') +
+          count.textContent = 'Owner: ' + selectedRow.team + ' — scope: ' + (scope || '(root)') +
             ' — showing ' + fmt.format(shown.length) + ' of ' + fmt.format(filteredFiles.length) + ' files.'
 
           const chips = chipList.querySelectorAll('.team-chip')

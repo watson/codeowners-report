@@ -26,7 +26,7 @@ See how ownership coverage looks in practice with [this interactive report](http
 - Coverage summary: total files, owned, unowned, and percentage
 - Directory explorer with filtering, sorting, and drill-down
 - Full unowned file list with scope and text filtering
-- Team ownership explorer with quick team chips and owned-file filtering
+- Ownership explorer with quick chips and file filtering for `@org/team` and `@username` owners
 - Matches GitHub `CODEOWNERS` discovery precedence: `.github/`, repository root, then `docs/`
 - Detects CODEOWNERS patterns that match no repository paths
 - Detects directories with fragile coverage — 100% covered through individual file rules, but new files would lack owners
@@ -221,7 +221,7 @@ The generated page includes:
 - repository-level ownership metrics and coverage bar
 - scoped directory table with coverage bars
 - searchable list of unowned files
-- team ownership explorer for filtering files by `@org/team`
+- ownership explorer for filtering files by `@org/team` or `@username`
 - active `CODEOWNERS` file and rule count
 - warnings for extra or unsupported `CODEOWNERS` files that GitHub will ignore
 - warnings for CODEOWNERS patterns that match no repository paths
