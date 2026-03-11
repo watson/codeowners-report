@@ -7,6 +7,7 @@ import {
   formatCodeownersOwnersList,
   formatCodeownersDiscoveryWarningForCli,
   formatMissingPathWarningForCli,
+  formatInvalidOwnerWarningForCli,
   formatMissingDirectorySlashWarningForCli,
   formatUnprotectedDirectoryWarningForCli,
 } from '../lib/cli-output.js'
@@ -151,6 +152,22 @@ test('formatMissingPathWarningForCli: formats pattern and owners', () => {
   const result = stripAnsi(formatMissingPathWarningForCli(warning, false))
   assert.ok(result.includes('/nonexistent/'))
   assert.ok(result.includes('@team-a, @team-b'))
+})
+
+test('formatInvalidOwnerWarningForCli: formats invalid owners and reasons', () => {
+  const warning = /** @type {import('../lib/types.js').InvalidOwnerWarning} */ ({
+    codeownersPath: '.github/CODEOWNERS',
+    pattern: '/src/app.js',
+    owners: ['@octocat', '@ghost'],
+    effectiveOwners: ['@octocat'],
+    invalidOwners: [
+      { owner: '@ghost', ownerType: 'user', reason: 'was not found on GitHub.' },
+    ],
+  })
+  const result = stripAnsi(formatInvalidOwnerWarningForCli(warning, false))
+  assert.ok(result.includes('/src/app.js'))
+  assert.ok(result.includes('@octocat, @ghost'))
+  assert.ok(result.includes('@ghost was not found on GitHub.'))
 })
 
 test('formatMissingDirectorySlashWarningForCli: formats suggestion and owners', () => {

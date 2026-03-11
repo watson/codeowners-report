@@ -18,6 +18,8 @@ test('parseArgs: returns defaults with no arguments', () => {
   assert.equal(result.listUnowned, false)
   assert.equal(result.failOnUnowned, false)
   assert.equal(result.failOnMissingPaths, false)
+  assert.equal(result.validateGithubOwners, false)
+  assert.equal(result.failOnInvalidOwners, false)
   assert.equal(result.failOnMissingDirectorySlashes, false)
   assert.equal(result.failOnLocationWarnings, false)
   assert.equal(result.failOnFragileCoverage, false)
@@ -64,6 +66,14 @@ test('parseArgs: --fail-on-unowned', () => {
 
 test('parseArgs: --fail-on-missing-paths', () => {
   assert.equal(parseArgs(['--fail-on-missing-paths']).failOnMissingPaths, true)
+})
+
+test('parseArgs: --validate-github-owners', () => {
+  assert.equal(parseArgs(['--validate-github-owners']).validateGithubOwners, true)
+})
+
+test('parseArgs: --fail-on-invalid-owners', () => {
+  assert.equal(parseArgs(['--fail-on-invalid-owners']).failOnInvalidOwners, true)
 })
 
 test('parseArgs: --fail-on-missing-directory-slashes', () => {

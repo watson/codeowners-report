@@ -87,6 +87,8 @@ In interactive mode, `--no-report` implies `--list-unowned` so output still stay
 | `--list-unowned` | Print unowned file paths to stdout |
 | `--fail-on-unowned` | Exit non-zero when one or more files are unowned |
 | `--fail-on-missing-paths` | Exit non-zero when one or more CODEOWNERS paths match no repository files |
+| `--validate-github-owners` | Validate `@username` and `@org/team` owners against GitHub and use only validated owners for coverage |
+| `--fail-on-invalid-owners` | Exit non-zero when one or more CODEOWNERS rules contain invalid GitHub owners |
 | `--fail-on-missing-directory-slashes` | Exit non-zero when directory CODEOWNERS paths do not follow the explicit trailing-slash style |
 | `--fail-on-location-warnings` | Exit non-zero when extra or ignored `CODEOWNERS` files are found |
 | `--fail-on-fragile-coverage` | Exit non-zero when directories have fragile file-by-file coverage |
@@ -200,6 +202,7 @@ codeowners-audit --glob "src/**/*.js" --glob "test/**/*.js"
 The report follows practical `CODEOWNERS` resolution behavior:
 
 - A file is considered **owned** if at least one owner is resolved.
+- When `--validate-github-owners` is enabled, `@username` and `@org/team` owners only count if GitHub confirms they exist and have write access to the repository.
 - Within a single `CODEOWNERS` file, the **last matching rule wins**.
 - A pattern line with no owners acts as an ownerless override only when it is the last matching rule for a path, matching GitHub's documented behavior.
 - GitHub only considers `CODEOWNERS` at `.github/CODEOWNERS`, `CODEOWNERS`, and `docs/CODEOWNERS`, using the first file found in that order.

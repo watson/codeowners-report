@@ -878,7 +878,7 @@ test('--no-report prints missing CODEOWNERS path warnings to stderr', (t) => {
   assert.match(plainStderr, /- \/does-not-exist\.js owners: @acme\/platform, @alice/)
   assert.match(
     plainStdout,
-    /Coverage summary:\nglobs: "\*\*"\ncodeowners file: CODEOWNERS\nanalyzed files: 3\nunknown files: 0\nmissing path warnings: 1\nlocation warnings: 0\ndirectory slash warnings: 0\nfragile coverage directories: /
+    /Coverage summary:\nglobs: "\*\*"\ncodeowners file: CODEOWNERS\nanalyzed files: 3\nunknown files: 0\nmissing path warnings: 1\ninvalid owner warnings: 0\nowner validation warnings: 0\nlocation warnings: 0\ndirectory slash warnings: 0\nfragile coverage directories: \d+/
   )
 })
 
@@ -1009,6 +1009,344 @@ test('--fail-on-missing-paths passes when all CODEOWNERS paths match repository 
   const result = runCli(['--fail-on-missing-paths'], { cwd: repoDir })
 
   assert.equal(result.status, 0, result.stderr)
+})
+
+test('--validate-github-owners treats invalid GitHub owners as uncovered in the report', async (t) => {
+  const repoDir = createRepo(t, {
+    remoteUrl: 'git@github.com:test-org/test-repo.git',
+    codeowners: [
+      '/src/owned.js @ghost',
+      '/src/unowned.js @ghost',
+    ].join('\n') + '\n',
+  })
+
+  const server = createServer((req, res) => {
+    const url = new URL(req.url || '/', 'http://127.0.0.1')
+    res.setHeader('content-type', 'application/json')
+    if (url.pathname === '/repos/test-org/test-repo/collaborators/ghost/permission') {
+      res.statusCode = 403
+      res.end(JSON.stringify({ message: 'Resource not accessible by integration' }))
+      return
+    }
+    if (url.pathname === '/users/ghost') {
+      res.statusCode = 404
+      res.end(JSON.stringify({ message: 'not found' }))
+      return
+    }
+    res.statusCode = 404
+    res.end(JSON.stringify({ message: 'not found' }))
+  })
+  await /** @type {Promise<void>} */ (
+    new Promise((resolve) => { server.listen(0, '127.0.0.1', resolve) })
+  )
+  t.after(() => { server.close() })
+  const address = server.address()
+  assert.ok(address && typeof address === 'object')
+  const apiBaseUrl = `http://127.0.0.1:${address.port}`
+
+  const result = await runCliAsync([
+    '--validate-github-owners',
+    '--github-token', 'test-token',
+    '--github-api-base-url', apiBaseUrl,
+    '--output', 'invalid-owner-report.html',
+  ], { cwd: repoDir })
+
+  assert.equal(result.status, 0, result.stderr)
+  const html = readFileSync(path.join(repoDir, 'invalid-owner-report.html'), 'utf8')
+  assert.match(html, /id="invalid-owner-warnings-heading">Invalid GitHub Owners/)
+
+  const reportData = parseReportDataFromHtml(html)
+  assert.ok(reportData.unownedFiles.includes('src/owned.js'))
+  assert.ok(reportData.unownedFiles.includes('src/unowned.js'))
+  assert.equal(reportData.codeownersValidationMeta.invalidOwnerWarningCount, 2)
+  assert.equal(reportData.teamOwnership.some(row => row.team === '@ghost'), false)
+})
+
+test('--validate-github-owners preserves existing users and reports degraded validation when access checks are forbidden', async (t) => {
+  const repoDir = createRepo(t, {
+    remoteUrl: 'git@github.com:test-org/test-repo.git',
+    codeowners: '/src/owned.js @octocat\n',
+  })
+
+  const server = createServer((req, res) => {
+    const url = new URL(req.url || '/', 'http://127.0.0.1')
+    res.setHeader('content-type', 'application/json')
+    if (url.pathname === '/repos/test-org/test-repo/collaborators/octocat/permission') {
+      res.statusCode = 403
+      res.end(JSON.stringify({ message: 'Resource not accessible by integration' }))
+      return
+    }
+    if (url.pathname === '/users/octocat') {
+      res.end(JSON.stringify({ login: 'octocat' }))
+      return
+    }
+    res.statusCode = 404
+    res.end(JSON.stringify({ message: 'not found' }))
+  })
+  await /** @type {Promise<void>} */ (
+    new Promise((resolve) => { server.listen(0, '127.0.0.1', resolve) })
+  )
+  t.after(() => { server.close() })
+  const address = server.address()
+  assert.ok(address && typeof address === 'object')
+  const apiBaseUrl = `http://127.0.0.1:${address.port}`
+
+  const result = await runCliAsync([
+    '--validate-github-owners',
+    '--github-token', 'test-token',
+    '--github-api-base-url', apiBaseUrl,
+    '--output', 'owner-validation-warning-report.html',
+  ], { cwd: repoDir })
+
+  assert.equal(result.status, 0, result.stderr)
+  const html = readFileSync(path.join(repoDir, 'owner-validation-warning-report.html'), 'utf8')
+  assert.match(html, /id="owner-validation-warnings-heading">GitHub Owner Validation Warnings/)
+  const reportData = parseReportDataFromHtml(html)
+  assert.equal(reportData.unownedFiles.includes('src/owned.js'), false)
+  assert.equal(reportData.codeownersValidationMeta.invalidOwnerWarningCount, 0)
+  assert.equal(reportData.codeownersValidationMeta.ownerValidationWarningCount, 1)
+  assert.match(reportData.codeownersValidationMeta.ownerValidationWarnings[0], /@octocat/)
+})
+
+test('--validate-github-owners does not mark same-org teams invalid when direct team access confirms write permission', async (t) => {
+  const repoDir = createRepo(t, {
+    remoteUrl: 'git@github.com:test-org/test-repo.git',
+    codeowners: '/src/owned.js @test-org/sdlc-security\n',
+  })
+
+  const server = createServer((req, res) => {
+    const url = new URL(req.url || '/', 'http://127.0.0.1')
+    res.setHeader('content-type', 'application/json')
+    if (url.pathname === '/repos/test-org/test-repo/teams') {
+      res.end(JSON.stringify([]))
+      return
+    }
+    if (url.pathname === '/orgs/test-org/teams/sdlc-security/repos/test-org/test-repo') {
+      res.end(JSON.stringify({
+        permissions: {
+          pull: true,
+          push: true,
+          admin: false,
+          maintain: false,
+          triage: false,
+        },
+      }))
+      return
+    }
+    res.statusCode = 404
+    res.end(JSON.stringify({ message: 'not found' }))
+  })
+  await /** @type {Promise<void>} */ (
+    new Promise((resolve) => { server.listen(0, '127.0.0.1', resolve) })
+  )
+  t.after(() => { server.close() })
+  const address = server.address()
+  assert.ok(address && typeof address === 'object')
+  const apiBaseUrl = `http://127.0.0.1:${address.port}`
+
+  const result = await runCliAsync([
+    '--validate-github-owners',
+    '--github-token', 'test-token',
+    '--github-api-base-url', apiBaseUrl,
+    '--output', 'team-direct-access-report.html',
+  ], { cwd: repoDir })
+
+  assert.equal(result.status, 0, result.stderr)
+  const reportData = parseReportDataFromHtml(readFileSync(path.join(repoDir, 'team-direct-access-report.html'), 'utf8'))
+  assert.equal(reportData.unownedFiles.includes('src/owned.js'), false)
+  assert.equal(reportData.codeownersValidationMeta.invalidOwnerWarningCount, 0)
+  assert.equal(reportData.codeownersValidationMeta.ownerValidationWarningCount, 0)
+})
+
+test('--validate-github-owners preserves same-org teams with a warning when team access cannot be proven', async (t) => {
+  const repoDir = createRepo(t, {
+    remoteUrl: 'git@github.com:test-org/test-repo.git',
+    codeowners: '/src/owned.js @test-org/sdlc-security\n',
+  })
+
+  const server = createServer((req, res) => {
+    const url = new URL(req.url || '/', 'http://127.0.0.1')
+    res.setHeader('content-type', 'application/json')
+    if (url.pathname === '/repos/test-org/test-repo/teams') {
+      res.end(JSON.stringify([]))
+      return
+    }
+    if (url.pathname === '/orgs/test-org/teams/sdlc-security/repos/test-org/test-repo') {
+      res.statusCode = 404
+      res.end(JSON.stringify({ message: 'not found' }))
+      return
+    }
+    if (url.pathname === '/orgs/test-org/teams/sdlc-security') {
+      res.end(JSON.stringify({ slug: 'sdlc-security' }))
+      return
+    }
+    res.statusCode = 404
+    res.end(JSON.stringify({ message: 'not found' }))
+  })
+  await /** @type {Promise<void>} */ (
+    new Promise((resolve) => { server.listen(0, '127.0.0.1', resolve) })
+  )
+  t.after(() => { server.close() })
+  const address = server.address()
+  assert.ok(address && typeof address === 'object')
+  const apiBaseUrl = `http://127.0.0.1:${address.port}`
+
+  const result = await runCliAsync([
+    '--validate-github-owners',
+    '--github-token', 'test-token',
+    '--github-api-base-url', apiBaseUrl,
+    '--output', 'team-inconclusive-report.html',
+  ], { cwd: repoDir })
+
+  assert.equal(result.status, 0, result.stderr)
+  const reportData = parseReportDataFromHtml(readFileSync(path.join(repoDir, 'team-inconclusive-report.html'), 'utf8'))
+  assert.equal(reportData.unownedFiles.includes('src/owned.js'), false)
+  assert.equal(reportData.codeownersValidationMeta.invalidOwnerWarningCount, 0)
+  assert.equal(reportData.codeownersValidationMeta.ownerValidationWarningCount, 1)
+  assert.match(reportData.codeownersValidationMeta.ownerValidationWarnings[0], /@test-org\/sdlc-security/)
+})
+
+test('--validate-github-owners keeps mixed owner rules covered when at least one owner is valid', async (t) => {
+  const repoDir = createRepo(t, {
+    remoteUrl: 'git@github.com:test-org/test-repo.git',
+    codeowners: [
+      '/src/owned.js @good @ghost',
+      '/src/unowned.js @ghost',
+    ].join('\n') + '\n',
+  })
+
+  const server = createServer((req, res) => {
+    const url = new URL(req.url || '/', 'http://127.0.0.1')
+    res.setHeader('content-type', 'application/json')
+    if (url.pathname === '/repos/test-org/test-repo/collaborators/good/permission') {
+      res.end(JSON.stringify({ permission: 'write' }))
+      return
+    }
+    if (url.pathname === '/repos/test-org/test-repo/collaborators/ghost/permission') {
+      res.statusCode = 404
+      res.end(JSON.stringify({ message: 'not found' }))
+      return
+    }
+    if (url.pathname === '/users/ghost') {
+      res.statusCode = 404
+      res.end(JSON.stringify({ message: 'not found' }))
+      return
+    }
+    res.statusCode = 404
+    res.end(JSON.stringify({ message: 'not found' }))
+  })
+  await /** @type {Promise<void>} */ (
+    new Promise((resolve) => { server.listen(0, '127.0.0.1', resolve) })
+  )
+  t.after(() => { server.close() })
+  const address = server.address()
+  assert.ok(address && typeof address === 'object')
+  const apiBaseUrl = `http://127.0.0.1:${address.port}`
+
+  const result = await runCliAsync([
+    '--validate-github-owners',
+    '--github-token', 'test-token',
+    '--github-api-base-url', apiBaseUrl,
+    '--output', 'mixed-owner-report.html',
+  ], { cwd: repoDir })
+
+  assert.equal(result.status, 0, result.stderr)
+  const reportData = parseReportDataFromHtml(readFileSync(path.join(repoDir, 'mixed-owner-report.html'), 'utf8'))
+  assert.equal(reportData.unownedFiles.includes('src/owned.js'), false)
+  assert.ok(reportData.unownedFiles.includes('src/unowned.js'))
+  assert.equal(reportData.teamOwnership.some(row => row.team === '@good'), true)
+  assert.equal(reportData.teamOwnership.some(row => row.team === '@ghost'), false)
+  assert.equal(reportData.codeownersValidationMeta.invalidOwnerWarningCount, 2)
+})
+
+test('--fail-on-invalid-owners exits non-zero and prints validation warnings', async (t) => {
+  const repoDir = createRepo(t, {
+    remoteUrl: 'git@github.com:test-org/test-repo.git',
+    codeowners: '/src/owned.js @ghost\n',
+  })
+
+  const server = createServer((req, res) => {
+    const url = new URL(req.url || '/', 'http://127.0.0.1')
+    res.setHeader('content-type', 'application/json')
+    if (url.pathname === '/repos/test-org/test-repo/collaborators/ghost/permission') {
+      res.statusCode = 403
+      res.end(JSON.stringify({ message: 'Resource not accessible by integration' }))
+      return
+    }
+    if (url.pathname === '/users/ghost') {
+      res.statusCode = 404
+      res.end(JSON.stringify({ message: 'not found' }))
+      return
+    }
+    res.statusCode = 404
+    res.end(JSON.stringify({ message: 'not found' }))
+  })
+  await /** @type {Promise<void>} */ (
+    new Promise((resolve) => { server.listen(0, '127.0.0.1', resolve) })
+  )
+  t.after(() => { server.close() })
+  const address = server.address()
+  assert.ok(address && typeof address === 'object')
+  const apiBaseUrl = `http://127.0.0.1:${address.port}`
+
+  const result = await runCliAsync([
+    '--no-report',
+    '--validate-github-owners',
+    '--fail-on-invalid-owners',
+    '--github-token', 'test-token',
+    '--github-api-base-url', apiBaseUrl,
+  ], { cwd: repoDir })
+  const plainStderr = stripAnsi(result.stderr)
+  const plainStdout = stripAnsi(result.stdout)
+
+  assert.equal(result.status, 1)
+  assert.match(plainStderr, /Invalid GitHub owners \(1\):/)
+  assert.match(plainStderr, /@ghost was not found on GitHub\./)
+  assert.match(plainStdout, /invalid owner warnings: 1/)
+})
+
+test('--no-report prints owner validation warnings when repo access checks are forbidden', async (t) => {
+  const repoDir = createRepo(t, {
+    remoteUrl: 'git@github.com:test-org/test-repo.git',
+    codeowners: '/src/owned.js @octocat\n',
+  })
+
+  const server = createServer((req, res) => {
+    const url = new URL(req.url || '/', 'http://127.0.0.1')
+    res.setHeader('content-type', 'application/json')
+    if (url.pathname === '/repos/test-org/test-repo/collaborators/octocat/permission') {
+      res.statusCode = 403
+      res.end(JSON.stringify({ message: 'Resource not accessible by integration' }))
+      return
+    }
+    if (url.pathname === '/users/octocat') {
+      res.end(JSON.stringify({ login: 'octocat' }))
+      return
+    }
+    res.statusCode = 404
+    res.end(JSON.stringify({ message: 'not found' }))
+  })
+  await /** @type {Promise<void>} */ (
+    new Promise((resolve) => { server.listen(0, '127.0.0.1', resolve) })
+  )
+  t.after(() => { server.close() })
+  const address = server.address()
+  assert.ok(address && typeof address === 'object')
+  const apiBaseUrl = `http://127.0.0.1:${address.port}`
+
+  const result = await runCliAsync([
+    '--no-report',
+    '--validate-github-owners',
+    '--github-token', 'test-token',
+    '--github-api-base-url', apiBaseUrl,
+  ], { cwd: repoDir })
+  const plainStderr = stripAnsi(result.stderr)
+  const plainStdout = stripAnsi(result.stdout)
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(plainStderr, /GitHub owner validation warnings \(1\):/)
+  assert.match(plainStderr, /Could not verify repository write access for @octocat/)
+  assert.match(plainStdout, /owner validation warnings: 1/)
 })
 
 test('--fail-on-location-warnings exits non-zero when extra CODEOWNERS files are found', (t) => {
@@ -1560,6 +1898,8 @@ test('--help prints usage without failing', (t) => {
   assert.match(result.stdout, /--list-unowned/)
   assert.match(result.stdout, /--fail-on-unowned/)
   assert.match(result.stdout, /--fail-on-missing-paths/)
+  assert.match(result.stdout, /--validate-github-owners/)
+  assert.match(result.stdout, /--fail-on-invalid-owners/)
   assert.match(result.stdout, /--fail-on-missing-directory-slashes/)
   assert.match(result.stdout, /--fail-on-location-warnings/)
   assert.match(result.stdout, /--fail-on-fragile-coverage/)
