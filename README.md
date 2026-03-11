@@ -86,6 +86,7 @@ In interactive mode, `--no-report` implies `--list-unowned` so output still stay
 | `--no-report` | Skip HTML report generation (implies `--list-unowned`) |
 | `--list-unowned` | Print unowned file paths to stdout |
 | `--fail-on-unowned` | Exit non-zero when one or more files are unowned |
+| `--fail-on-oversized-codeowners` | Exit non-zero when the active `CODEOWNERS` file exceeds GitHub's 3 MB limit |
 | `--fail-on-missing-paths` | Exit non-zero when one or more CODEOWNERS paths match no repository files |
 | `--validate-github-owners` | Validate `@username` and `@org/team` owners against GitHub and use only validated owners for coverage |
 | `--fail-on-invalid-owners` | Exit non-zero when one or more CODEOWNERS rules contain invalid GitHub owners |

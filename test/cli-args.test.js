@@ -17,6 +17,7 @@ test('parseArgs: returns defaults with no arguments', () => {
   assert.equal(result.noReport, false)
   assert.equal(result.listUnowned, false)
   assert.equal(result.failOnUnowned, false)
+  assert.equal(result.failOnOversizedCodeowners, false)
   assert.equal(result.failOnMissingPaths, false)
   assert.equal(result.validateGithubOwners, false)
   assert.equal(result.failOnInvalidOwners, false)
@@ -62,6 +63,10 @@ test('parseArgs: --list-unowned', () => {
 
 test('parseArgs: --fail-on-unowned', () => {
   assert.equal(parseArgs(['--fail-on-unowned']).failOnUnowned, true)
+})
+
+test('parseArgs: --fail-on-oversized-codeowners', () => {
+  assert.equal(parseArgs(['--fail-on-oversized-codeowners']).failOnOversizedCodeowners, true)
 })
 
 test('parseArgs: --fail-on-missing-paths', () => {

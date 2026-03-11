@@ -14,6 +14,7 @@ const defaultOutputFile = 'codeowners-gaps-report.html'
 const DEFAULT_EXEC_FILE_MAX_BUFFER_BYTES = 1024 * 1024
 const GIT_BUFFER_STRESS_TARGET_BYTES = DEFAULT_EXEC_FILE_MAX_BUFFER_BYTES + (96 * 1024)
 const ZENBIN_UPLOAD_STRESS_TARGET_BYTES = 1280 * 1024
+const GITHUB_CODEOWNERS_MAX_BYTES = 3 * 1024 * 1024
 
 function parseOutputPathFromStdout (stdout) {
   const match = stdout.match(/Report ready at (.+)/)
@@ -173,6 +174,28 @@ function parseReportDataFromHtml (html) {
   const match = html.match(/<script type="application\/json" id="report-data">([\s\S]*?)<\/script>/)
   assert.ok(match, 'report JSON should exist in report-data script tag')
   return JSON.parse(match[1])
+}
+
+function buildCodeownersWithExactByteSize (targetBytes, firstRule = '/src/owned.js @team\n') {
+  assert.ok(
+    Buffer.byteLength(firstRule, 'utf8') <= targetBytes,
+    'initial CODEOWNERS rule must fit within the requested byte size'
+  )
+
+  let content = firstRule
+  while (Buffer.byteLength(content, 'utf8') < targetBytes) {
+    const remainingBytes = targetBytes - Buffer.byteLength(content, 'utf8')
+    if (remainingBytes === 1) {
+      content += '\n'
+      break
+    }
+
+    const fillerWidth = Math.min(remainingBytes - 2, 4096)
+    content += '#' + 'x'.repeat(fillerWidth) + '\n'
+  }
+
+  assert.equal(Buffer.byteLength(content, 'utf8'), targetBytes)
+  return content
 }
 
 function getOpenCommandName () {
@@ -771,6 +794,126 @@ test('--fail-on-unowned exits non-zero when unowned files exist and still writes
   assert.match(result.stderr, /src\/unowned\.js/)
 })
 
+test('report includes oversized CODEOWNERS warning when active file exceeds GitHub 3 MB limit', (t) => {
+  const oversizedBytes = GITHUB_CODEOWNERS_MAX_BYTES + 1
+  const repoDir = createRepo(t, {
+    codeowners: buildCodeownersWithExactByteSize(oversizedBytes),
+  })
+
+  const result = runCli(['--output', 'oversized-codeowners.html'], { cwd: repoDir })
+
+  assert.equal(result.status, 0, result.stderr)
+  const html = readFileSync(path.join(repoDir, 'oversized-codeowners.html'), 'utf8')
+  assert.match(html, /id="oversized-codeowners-warnings-heading">Oversized CODEOWNERS Files<\/h3>/)
+  const reportData = parseReportDataFromHtml(html)
+  assert.equal(reportData.codeownersFiles[0].path, 'CODEOWNERS')
+  assert.equal(reportData.codeownersFiles[0].rules, 0)
+  assert.equal(reportData.totals.owned, 0)
+  assert.ok(reportData.unownedFiles.includes('src/owned.js'))
+  assert.equal(reportData.codeownersValidationMeta.oversizedCodeownersWarningCount, 1)
+  assert.deepEqual(reportData.codeownersValidationMeta.oversizedCodeownersWarnings, [{
+    codeownersPath: 'CODEOWNERS',
+    sizeBytes: oversizedBytes,
+    sizeLimitBytes: GITHUB_CODEOWNERS_MAX_BYTES,
+    message: `CODEOWNERS is ignored because it is ${oversizedBytes} bytes and exceeds GitHub's 3 MB CODEOWNERS limit of ${GITHUB_CODEOWNERS_MAX_BYTES} bytes.`,
+  }])
+})
+
+test('CODEOWNERS exactly at GitHub 3 MB limit still loads normally', (t) => {
+  const repoDir = createRepo(t, {
+    codeowners: buildCodeownersWithExactByteSize(GITHUB_CODEOWNERS_MAX_BYTES),
+  })
+
+  const result = runCli(['--output', 'codeowners-size-boundary.html'], { cwd: repoDir })
+
+  assert.equal(result.status, 0, result.stderr)
+  const reportData = parseReportDataFromHtml(
+    readFileSync(path.join(repoDir, 'codeowners-size-boundary.html'), 'utf8')
+  )
+  assert.equal(reportData.codeownersValidationMeta.oversizedCodeownersWarningCount, 0)
+  assert.equal(reportData.codeownersFiles[0].rules, 1)
+  assert.equal(reportData.unownedFiles.includes('src/owned.js'), false)
+  assert.equal(reportData.totals.owned, 1)
+})
+
+test('--no-report prints oversized CODEOWNERS warnings to stderr', (t) => {
+  const oversizedBytes = GITHUB_CODEOWNERS_MAX_BYTES + 1
+  const repoDir = createRepo(t, {
+    codeowners: buildCodeownersWithExactByteSize(oversizedBytes),
+  })
+
+  const result = runCli(['--no-report'], { cwd: repoDir })
+  const plainStderr = stripAnsi(result.stderr)
+  const plainStdout = stripAnsi(result.stdout)
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(plainStderr, /Oversized CODEOWNERS files \(1\):/)
+  assert.match(
+    plainStderr,
+    /- CODEOWNERS is ignored because it is 3,145,729 bytes and exceeds GitHub's 3 MB limit \(3,145,728 bytes\)\./
+  )
+  assert.match(plainStdout, /oversized CODEOWNERS warnings: 1/)
+})
+
+test('--fail-on-oversized-codeowners exits non-zero when active CODEOWNERS exceeds GitHub 3 MB limit', (t) => {
+  const repoDir = createRepo(t, {
+    codeowners: buildCodeownersWithExactByteSize(GITHUB_CODEOWNERS_MAX_BYTES + 1),
+  })
+
+  const result = runCli(['--fail-on-oversized-codeowners'], { cwd: repoDir })
+
+  assert.equal(result.status, 1)
+  assert.match(result.stdout, /Report ready at/)
+})
+
+test('--fail-on-oversized-codeowners is repository-wide and not scoped by --glob', (t) => {
+  const repoDir = createRepo(t, {
+    codeowners: buildCodeownersWithExactByteSize(GITHUB_CODEOWNERS_MAX_BYTES + 1),
+  })
+
+  const result = runCli(['--fail-on-oversized-codeowners', '--glob', 'src/owned.js'], { cwd: repoDir })
+
+  assert.equal(result.status, 1)
+  assert.doesNotMatch(result.stdout, /Coverage summary:/)
+})
+
+test('--fail-on-oversized-codeowners passes when CODEOWNERS is within GitHub 3 MB limit', (t) => {
+  const repoDir = createRepo(t, {
+    codeowners: buildCodeownersWithExactByteSize(GITHUB_CODEOWNERS_MAX_BYTES),
+  })
+
+  const result = runCli(['--fail-on-oversized-codeowners'], { cwd: repoDir })
+
+  assert.equal(result.status, 0, result.stderr)
+})
+
+test('oversized higher-priority .github\/CODEOWNERS does not fall back to root CODEOWNERS', (t) => {
+  const repoDir = createRepo(t, {
+    codeowners: '/src/owned.js @root\n',
+    trackedFiles: {
+      '.github/CODEOWNERS': buildCodeownersWithExactByteSize(
+        GITHUB_CODEOWNERS_MAX_BYTES + 1,
+        '/src/owned.js @github\n'
+      ),
+    },
+  })
+
+  const result = runCli(['--output', 'oversized-codeowners-precedence.html'], { cwd: repoDir })
+
+  assert.equal(result.status, 0, result.stderr)
+  const reportData = parseReportDataFromHtml(
+    readFileSync(path.join(repoDir, 'oversized-codeowners-precedence.html'), 'utf8')
+  )
+  assert.deepEqual(reportData.codeownersFiles.map(row => row.path), ['.github/CODEOWNERS'])
+  assert.equal(reportData.codeownersFiles[0].rules, 0)
+  assert.ok(reportData.unownedFiles.includes('src/owned.js'))
+  assert.equal(reportData.codeownersValidationMeta.oversizedCodeownersWarningCount, 1)
+  assert.deepEqual(
+    reportData.codeownersValidationMeta.discoveryWarnings.map((warning) => [warning.path, warning.type]),
+    [['CODEOWNERS', 'unused-supported-location']]
+  )
+})
+
 test('report includes missing CODEOWNERS path warnings in validation metadata', (t) => {
   const repoDir = createRepo(t, {
     codeowners: [
@@ -939,7 +1082,7 @@ test('--no-report prints missing CODEOWNERS path warnings to stderr', (t) => {
   assert.match(plainStderr, /- \/does-not-exist\.js owners: @acme\/platform, @alice/)
   assert.match(
     plainStdout,
-    /Coverage summary:\nglobs: "\*\*"\ncodeowners file: CODEOWNERS\nanalyzed files: 3\nunknown files: 0\nmissing path warnings: 1\ninvalid owner warnings: 0\nowner validation warnings: 0\nlocation warnings: 0\ndirectory slash warnings: 0\nfragile coverage directories: \d+/
+    /Coverage summary:\nglobs: "\*\*"\ncodeowners file: CODEOWNERS\nanalyzed files: 3\nunknown files: 0\noversized CODEOWNERS warnings: 0\nmissing path warnings: 1\ninvalid owner warnings: 0\nowner validation warnings: 0\nlocation warnings: 0\ndirectory slash warnings: 0\nfragile coverage directories: \d+/
   )
 })
 
@@ -1958,6 +2101,7 @@ test('--help prints usage without failing', (t) => {
   assert.match(result.stdout, /--no-report/)
   assert.match(result.stdout, /--list-unowned/)
   assert.match(result.stdout, /--fail-on-unowned/)
+  assert.match(result.stdout, /--fail-on-oversized-codeowners/)
   assert.match(result.stdout, /--fail-on-missing-paths/)
   assert.match(result.stdout, /--validate-github-owners/)
   assert.match(result.stdout, /--fail-on-invalid-owners/)

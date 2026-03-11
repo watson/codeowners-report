@@ -508,6 +508,11 @@
         </thead>
         <tbody id="codeowners-table-body"></tbody>
       </table>
+      <div id="oversized-codeowners-warnings" class="validation-warnings" hidden>
+        <h3 id="oversized-codeowners-warnings-heading">Oversized CODEOWNERS Files</h3>
+        <p class="warning-text" style="margin: 4px 0 0; font-size: 13px;">GitHub ignores `CODEOWNERS` files larger than 3 MB, so coverage from these files should not be trusted.</p>
+        <ul id="oversized-codeowners-warnings-list"></ul>
+      </div>
       <div id="missing-path-warnings" class="validation-warnings" hidden>
         <h3 id="missing-path-warnings-heading">Patterns With No Matching Repository Paths</h3>
         <ul id="missing-path-warnings-list"></ul>
@@ -560,6 +565,8 @@
       const codeownersValidationMeta = report.codeownersValidationMeta || {
         discoveryWarnings: [],
         discoveryWarningCount: 0,
+        oversizedCodeownersWarnings: [],
+        oversizedCodeownersWarningCount: 0,
         missingPathWarnings: [],
         missingPathWarningCount: 0,
         invalidOwnerWarnings: [],
@@ -620,6 +627,7 @@
       document.getElementById('coverage-unowned').style.width = clamp(100 - report.totals.coverage) + '%'
 
       renderCodeownersFiles(report.codeownersFiles)
+      renderOversizedCodeownersWarnings(codeownersValidationMeta)
       renderMissingPathWarnings(codeownersValidationMeta)
       renderInvalidOwnerWarnings(codeownersValidationMeta)
       renderOwnerValidationWarnings(codeownersValidationMeta)
@@ -655,6 +663,42 @@
           tr.children[1].textContent = fmt.format(row.rules)
           body.appendChild(tr)
         }
+      }
+
+      function renderOversizedCodeownersWarnings (validationMeta) {
+        const container = document.getElementById('oversized-codeowners-warnings')
+        const heading = document.getElementById('oversized-codeowners-warnings-heading')
+        const list = document.getElementById('oversized-codeowners-warnings-list')
+        const warningRows = Array.isArray(validationMeta && validationMeta.oversizedCodeownersWarnings)
+          ? validationMeta.oversizedCodeownersWarnings
+          : []
+
+        list.innerHTML = ''
+        if (warningRows.length === 0) {
+          container.hidden = true
+          return
+        }
+
+        const warningCount = Number(validationMeta && validationMeta.oversizedCodeownersWarningCount) || warningRows.length
+        heading.textContent = 'Oversized CODEOWNERS Files (' + fmt.format(warningCount) + ')'
+
+        for (const warning of warningRows) {
+          const item = document.createElement('li')
+          const pathSpan = document.createElement('span')
+          pathSpan.className = 'warning-path'
+          pathSpan.textContent = warning.codeownersPath
+          item.appendChild(pathSpan)
+
+          const textSpan = document.createElement('span')
+          textSpan.className = 'warning-text'
+          textSpan.textContent = ' is ignored because it is ' + formatByteCount(warning.sizeBytes) +
+            ' and exceeds GitHub\'s 3 MB limit (' + formatByteCount(warning.sizeLimitBytes) + ').'
+          item.appendChild(textSpan)
+
+          list.appendChild(item)
+        }
+
+        container.hidden = false
       }
 
       function renderMissingPathWarnings (validationMeta) {
@@ -909,6 +953,10 @@
         if (elapsedMs >= hourMs) return Math.floor(elapsedMs / hourMs) + 'h ago'
         if (elapsedMs >= minuteMs) return Math.floor(elapsedMs / minuteMs) + 'm ago'
         return 'just now'
+      }
+
+      function formatByteCount (value) {
+        return fmt.format(value) + ' bytes'
       }
 
       function renderCodeownersDiscoveryWarnings (validationMeta) {
