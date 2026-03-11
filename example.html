@@ -188,19 +188,19 @@
     }
     .controls label { color: var(--muted); display: flex; gap: 8px; align-items: center; font-size: 14px; }
     .suggestion-muted { color: var(--muted); }
-    .team-controls {
+    .owner-controls {
       display: grid;
       grid-template-columns: minmax(260px, 420px) minmax(280px, 1fr);
       gap: 12px;
       align-items: center;
     }
-    .team-chip-list {
+    .owner-chip-list {
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
       margin-bottom: 10px;
     }
-    .team-chip {
+    .owner-chip {
       border: 1px solid rgba(139, 92, 246, 0.55);
       background: rgba(139, 92, 246, 0.18);
       color: #ddd6fe;
@@ -209,15 +209,15 @@
       font-size: 12px;
       cursor: pointer;
     }
-    .team-chip:hover {
+    .owner-chip:hover {
       background: rgba(139, 92, 246, 0.3);
     }
-    .team-chip.is-active {
+    .owner-chip.is-active {
       border-color: #c4b5fd;
       background: rgba(196, 181, 253, 0.34);
       color: #f5f3ff;
     }
-    .team-empty {
+    .owner-empty {
       border: 1px dashed var(--border);
       border-radius: 10px;
       padding: 12px;
@@ -354,7 +354,7 @@
       margin-top: 10px;
       margin-bottom: 6px;
     }
-    #team-file-count {
+    #owner-file-count {
       margin-top: 10px;
       margin-bottom: 6px;
     }
@@ -403,7 +403,7 @@
       .hero-title { align-items: flex-start; }
       .controls input[type="text"] { min-width: 100%; }
       .controls select { min-width: 100%; }
-      .team-controls {
+      .owner-controls {
         grid-template-columns: 1fr;
       }
     }
@@ -485,14 +485,14 @@
         <h2>Ownership Explorer</h2>
         <p class="muted">Select an owner to view the files they own</p>
       </div>
-      <div class="team-empty muted" id="team-empty-state"></div>
-      <div class="controls field-controls team-controls">
-        <select id="team-select" aria-label="Select owner"></select>
-        <input id="team-file-filter" type="text" placeholder="Filter selected owner's files..." />
+      <div class="owner-empty muted" id="owner-empty-state"></div>
+      <div class="controls field-controls owner-controls">
+        <select id="owner-select" aria-label="Select owner"></select>
+        <input id="owner-file-filter" type="text" placeholder="Filter selected owner's files..." />
       </div>
-      <div class="team-chip-list" id="team-chip-list"></div>
-      <div class="file-list" id="team-file-list"></div>
-      <p class="muted" id="team-file-count"></p>
+      <div class="owner-chip-list" id="owner-chip-list"></div>
+      <div class="file-list" id="owner-file-list"></div>
+      <p class="muted" id="owner-file-count"></p>
     </section>
 
     <section class="panel">
@@ -508,13 +508,31 @@
         </thead>
         <tbody id="codeowners-table-body"></tbody>
       </table>
+      <div id="oversized-codeowners-warnings" class="validation-warnings" hidden>
+        <h3 id="oversized-codeowners-warnings-heading">Oversized CODEOWNERS Files</h3>
+        <p class="warning-text" style="margin: 4px 0 0; font-size: 13px;">GitHub ignores `CODEOWNERS` files larger than 3 MB, so coverage from these files should not be trusted.</p>
+        <ul id="oversized-codeowners-warnings-list"></ul>
+      </div>
       <div id="missing-path-warnings" class="validation-warnings" hidden>
         <h3 id="missing-path-warnings-heading">Patterns With No Matching Repository Paths</h3>
         <ul id="missing-path-warnings-list"></ul>
       </div>
+      <div id="invalid-owner-warnings" class="validation-warnings" hidden>
+        <h3 id="invalid-owner-warnings-heading">Invalid GitHub Owners</h3>
+        <ul id="invalid-owner-warnings-list"></ul>
+      </div>
+      <div id="owner-validation-warnings" class="validation-warnings" hidden>
+        <h3 id="owner-validation-warnings-heading">GitHub Owner Validation Warnings</h3>
+        <ul id="owner-validation-warnings-list"></ul>
+      </div>
       <div id="codeowners-discovery-warnings" class="validation-warnings" hidden>
         <h3 id="codeowners-discovery-warnings-heading">CODEOWNERS Location Warnings</h3>
         <ul id="codeowners-discovery-warnings-list"></ul>
+      </div>
+      <div id="missing-directory-slash-warnings" class="validation-warnings" hidden>
+        <h3 id="missing-directory-slash-warnings-heading">Directory Entries Missing Trailing Slash</h3>
+        <p class="warning-text" style="margin: 4px 0 0; font-size: 13px;">These rules currently work, but adding a trailing slash makes directory ownership explicit and avoids file-vs-directory ambiguity.</p>
+        <ul id="missing-directory-slash-warnings-list"></ul>
       </div>
       <div id="unprotected-directory-warnings" class="validation-warnings" hidden>
         <h3 id="unprotected-directory-warnings-heading">Directories With Fragile Coverage</h3>
@@ -533,15 +551,15 @@
 
   <script type="application/json" id="report-data">{
   "repoName": "nodejs/node",
-  "generatedAt": "2026-03-10T12:41:29.990Z",
+  "generatedAt": "2026-03-11T11:44:03.452Z",
   "options": {
     "includeUntracked": false,
     "teamSuggestionsEnabled": false
   },
   "totals": {
-    "files": 47315,
-    "owned": 38175,
-    "unowned": 9140,
+    "files": 47319,
+    "owned": 38176,
+    "unowned": 9143,
     "coverage": 80.7
   },
   "codeownersFiles": [
@@ -553,30 +571,30 @@
   "directories": [
     {
       "path": "(root)",
-      "total": 47315,
-      "owned": 38175,
-      "unowned": 9140,
+      "total": 47319,
+      "owned": 38176,
+      "unowned": 9143,
       "coverage": 80.7
     },
     {
       "path": "test",
-      "total": 10134,
-      "owned": 2365,
-      "unowned": 7769,
+      "total": 10138,
+      "owned": 2366,
+      "unowned": 7772,
       "coverage": 23.3
     },
     {
       "path": "test/parallel",
-      "total": 4028,
+      "total": 4029,
       "owned": 174,
-      "unowned": 3854,
+      "unowned": 3855,
       "coverage": 4.3
     },
     {
       "path": "test/fixtures",
-      "total": 4328,
+      "total": 4330,
       "owned": 1906,
-      "unowned": 2422,
+      "unowned": 2424,
       "coverage": 44
     },
     {
@@ -755,17 +773,17 @@
       "coverage": 0
     },
     {
-      "path": "test/pummel",
+      "path": "test/fixtures/sea",
       "total": 64,
       "owned": 0,
       "unowned": 64,
       "coverage": 0
     },
     {
-      "path": "test/fixtures/sea",
-      "total": 62,
+      "path": "test/pummel",
+      "total": 64,
       "owned": 0,
-      "unowned": 62,
+      "unowned": 64,
       "coverage": 0
     },
     {
@@ -4333,6 +4351,13 @@
     },
     {
       "path": "test/fixtures/sea/esm",
+      "total": 2,
+      "owned": 0,
+      "unowned": 2,
+      "coverage": 0
+    },
+    {
+      "path": "test/fixtures/sea/esm-code-cache",
       "total": 2,
       "owned": 0,
       "unowned": 2,
@@ -8420,6 +8445,13 @@
       "coverage": 100
     },
     {
+      "path": "test/sea",
+      "total": 38,
+      "owned": 38,
+      "unowned": 0,
+      "coverage": 100
+    },
+    {
       "path": "tools/dep_updaters",
       "total": 38,
       "owned": 38,
@@ -8463,13 +8495,6 @@
     },
     {
       "path": "deps/v8/third_party/abseil-cpp/absl/debugging/internal",
-      "total": 37,
-      "owned": 37,
-      "unowned": 0,
-      "coverage": 100
-    },
-    {
-      "path": "test/sea",
       "total": 37,
       "owned": 37,
       "unowned": 0,
@@ -33747,6 +33772,8 @@
     "test/fixtures/sea/disable-experimental-warning/sea.js",
     "test/fixtures/sea/empty/empty.js",
     "test/fixtures/sea/empty/sea-config.json",
+    "test/fixtures/sea/esm-code-cache/sea-config.json",
+    "test/fixtures/sea/esm-code-cache/sea.mjs",
     "test/fixtures/sea/esm/sea-config.json",
     "test/fixtures/sea/esm/sea.mjs",
     "test/fixtures/sea/exec-argv-empty/sea-config.json",
@@ -36104,6 +36131,7 @@
     "test/parallel/test-fs-cp-sync-src-parent-of-dest-error.mjs",
     "test/parallel/test-fs-cp-sync-symlink-dest-points-to-src-error.mjs",
     "test/parallel/test-fs-cp-sync-symlink-points-to-dest-error.mjs",
+    "test/parallel/test-fs-cp-sync-unicode-dest.mjs",
     "test/parallel/test-fs-cp-sync-unicode-folder-names.mjs",
     "test/parallel/test-fs-cp-sync-verbatim-symlinks-invalid.mjs",
     "test/parallel/test-fs-cp-sync-verbatim-symlinks-true.mjs",
@@ -39591,9 +39619,9 @@
     "unofficial.gni",
     "vcbuild.bat"
   ],
-  "teamOwnership": [
+  "ownerIndex": [
     {
-      "team": "@nodejs/security-wg",
+      "owner": "@nodejs/security-wg",
       "total": 35288,
       "files": [
         ".github/workflows/tools.yml",
@@ -74887,7 +74915,7 @@
       ]
     },
     {
-      "team": "@nodejs/web-standards",
+      "owner": "@nodejs/web-standards",
       "total": 1808,
       "files": [
         "lib/internal/bootstrap/web/exposed-wildcard.js",
@@ -76701,7 +76729,7 @@
       ]
     },
     {
-      "team": "@nodejs/gyp",
+      "owner": "@nodejs/gyp",
       "total": 213,
       "files": [
         "benchmark/napi/buffer/binding.gyp",
@@ -76920,7 +76948,7 @@
       ]
     },
     {
-      "team": "@nodejs/typescript",
+      "owner": "@nodejs/typescript",
       "total": 97,
       "files": [
         "deps/amaro/dist/errors.d.ts",
@@ -77023,7 +77051,7 @@
       ]
     },
     {
-      "team": "@nodejs/crypto",
+      "owner": "@nodejs/crypto",
       "total": 96,
       "files": [
         "doc/api/crypto.md",
@@ -77125,7 +77153,7 @@
       ]
     },
     {
-      "team": "@nodejs/wasi",
+      "owner": "@nodejs/wasi",
       "total": 93,
       "files": [
         "doc/api/wasi.md",
@@ -77224,7 +77252,7 @@
       ]
     },
     {
-      "team": "@nodejs/test_runner",
+      "owner": "@nodejs/test_runner",
       "total": 75,
       "files": [
         "doc/api/test.md",
@@ -77305,7 +77333,80 @@
       ]
     },
     {
-      "team": "@nodejs/inspector",
+      "owner": "@nodejs/single-executable",
+      "total": 67,
+      "files": [
+        "doc/api/single-executable-applications.md",
+        "doc/contributing/maintaining/maintaining-single-executable-application-support.md",
+        "src/node_sea_bin.cc",
+        "src/node_sea.cc",
+        "src/node_sea.h",
+        "test/fixtures/postject-copy/node_modules/.package-lock.json",
+        "test/fixtures/postject-copy/node_modules/commander/esm.mjs",
+        "test/fixtures/postject-copy/node_modules/commander/index.js",
+        "test/fixtures/postject-copy/node_modules/commander/lib/argument.js",
+        "test/fixtures/postject-copy/node_modules/commander/lib/command.js",
+        "test/fixtures/postject-copy/node_modules/commander/lib/error.js",
+        "test/fixtures/postject-copy/node_modules/commander/lib/help.js",
+        "test/fixtures/postject-copy/node_modules/commander/lib/option.js",
+        "test/fixtures/postject-copy/node_modules/commander/lib/suggestSimilar.js",
+        "test/fixtures/postject-copy/node_modules/commander/LICENSE",
+        "test/fixtures/postject-copy/node_modules/commander/package-support.json",
+        "test/fixtures/postject-copy/node_modules/commander/package.json",
+        "test/fixtures/postject-copy/node_modules/commander/Readme.md",
+        "test/fixtures/postject-copy/node_modules/commander/typings/index.d.ts",
+        "test/fixtures/postject-copy/node_modules/postject/CODE_OF_CONDUCT.md",
+        "test/fixtures/postject-copy/node_modules/postject/CONTRIBUTING.md",
+        "test/fixtures/postject-copy/node_modules/postject/dist/api.js",
+        "test/fixtures/postject-copy/node_modules/postject/dist/cli.js",
+        "test/fixtures/postject-copy/node_modules/postject/dist/postject-api.h",
+        "test/fixtures/postject-copy/node_modules/postject/LICENSE",
+        "test/fixtures/postject-copy/node_modules/postject/package.json",
+        "test/fixtures/postject-copy/node_modules/postject/README.markdown",
+        "test/fixtures/postject-copy/package-lock.json",
+        "test/fixtures/postject-copy/package.json",
+        "test/sea/sea.status",
+        "test/sea/test-build-sea-already-exists.js",
+        "test/sea/test-build-sea-config-not-found.js",
+        "test/sea/test-build-sea-custom-argv0.js",
+        "test/sea/test-build-sea-executable-field.js",
+        "test/sea/test-build-sea-invalid-assets.js",
+        "test/sea/test-build-sea-invalid-boolean-fields.js",
+        "test/sea/test-build-sea-invalid-exec-argv.js",
+        "test/sea/test-build-sea-invalid-executable.js",
+        "test/sea/test-build-sea-invalid-json.js",
+        "test/sea/test-build-sea-missing-main.js",
+        "test/sea/test-build-sea-missing-output.js",
+        "test/sea/test-build-sea.js",
+        "test/sea/test-single-executable-application-asset-keys-empty.js",
+        "test/sea/test-single-executable-application-asset-keys.js",
+        "test/sea/test-single-executable-application-assets-invalid-type.js",
+        "test/sea/test-single-executable-application-assets-nonexistent-file.js",
+        "test/sea/test-single-executable-application-assets-raw.js",
+        "test/sea/test-single-executable-application-assets.js",
+        "test/sea/test-single-executable-application-disable-experimental-sea-warning.js",
+        "test/sea/test-single-executable-application-empty.js",
+        "test/sea/test-single-executable-application-esm-code-cache.js",
+        "test/sea/test-single-executable-application-esm.js",
+        "test/sea/test-single-executable-application-exec-argv-empty.js",
+        "test/sea/test-single-executable-application-exec-argv-extension-cli.js",
+        "test/sea/test-single-executable-application-exec-argv-extension-env.js",
+        "test/sea/test-single-executable-application-exec-argv-extension-none.js",
+        "test/sea/test-single-executable-application-exec-argv.js",
+        "test/sea/test-single-executable-application-inspect-in-sea-flags.js",
+        "test/sea/test-single-executable-application-inspect.js",
+        "test/sea/test-single-executable-application-snapshot-and-code-cache.js",
+        "test/sea/test-single-executable-application-snapshot-worker.js",
+        "test/sea/test-single-executable-application-snapshot.js",
+        "test/sea/test-single-executable-application-use-code-cache.js",
+        "test/sea/test-single-executable-application.js",
+        "test/sea/test-single-executable-blob-config-errors.js",
+        "test/sea/test-single-executable-blob-config.js",
+        "test/sea/testcfg.py"
+      ]
+    },
+    {
+      "owner": "@nodejs/inspector",
       "total": 66,
       "files": [
         "lib/inspector.js",
@@ -77377,79 +77478,7 @@
       ]
     },
     {
-      "team": "@nodejs/single-executable",
-      "total": 66,
-      "files": [
-        "doc/api/single-executable-applications.md",
-        "doc/contributing/maintaining/maintaining-single-executable-application-support.md",
-        "src/node_sea_bin.cc",
-        "src/node_sea.cc",
-        "src/node_sea.h",
-        "test/fixtures/postject-copy/node_modules/.package-lock.json",
-        "test/fixtures/postject-copy/node_modules/commander/esm.mjs",
-        "test/fixtures/postject-copy/node_modules/commander/index.js",
-        "test/fixtures/postject-copy/node_modules/commander/lib/argument.js",
-        "test/fixtures/postject-copy/node_modules/commander/lib/command.js",
-        "test/fixtures/postject-copy/node_modules/commander/lib/error.js",
-        "test/fixtures/postject-copy/node_modules/commander/lib/help.js",
-        "test/fixtures/postject-copy/node_modules/commander/lib/option.js",
-        "test/fixtures/postject-copy/node_modules/commander/lib/suggestSimilar.js",
-        "test/fixtures/postject-copy/node_modules/commander/LICENSE",
-        "test/fixtures/postject-copy/node_modules/commander/package-support.json",
-        "test/fixtures/postject-copy/node_modules/commander/package.json",
-        "test/fixtures/postject-copy/node_modules/commander/Readme.md",
-        "test/fixtures/postject-copy/node_modules/commander/typings/index.d.ts",
-        "test/fixtures/postject-copy/node_modules/postject/CODE_OF_CONDUCT.md",
-        "test/fixtures/postject-copy/node_modules/postject/CONTRIBUTING.md",
-        "test/fixtures/postject-copy/node_modules/postject/dist/api.js",
-        "test/fixtures/postject-copy/node_modules/postject/dist/cli.js",
-        "test/fixtures/postject-copy/node_modules/postject/dist/postject-api.h",
-        "test/fixtures/postject-copy/node_modules/postject/LICENSE",
-        "test/fixtures/postject-copy/node_modules/postject/package.json",
-        "test/fixtures/postject-copy/node_modules/postject/README.markdown",
-        "test/fixtures/postject-copy/package-lock.json",
-        "test/fixtures/postject-copy/package.json",
-        "test/sea/sea.status",
-        "test/sea/test-build-sea-already-exists.js",
-        "test/sea/test-build-sea-config-not-found.js",
-        "test/sea/test-build-sea-custom-argv0.js",
-        "test/sea/test-build-sea-executable-field.js",
-        "test/sea/test-build-sea-invalid-assets.js",
-        "test/sea/test-build-sea-invalid-boolean-fields.js",
-        "test/sea/test-build-sea-invalid-exec-argv.js",
-        "test/sea/test-build-sea-invalid-executable.js",
-        "test/sea/test-build-sea-invalid-json.js",
-        "test/sea/test-build-sea-missing-main.js",
-        "test/sea/test-build-sea-missing-output.js",
-        "test/sea/test-build-sea.js",
-        "test/sea/test-single-executable-application-asset-keys-empty.js",
-        "test/sea/test-single-executable-application-asset-keys.js",
-        "test/sea/test-single-executable-application-assets-invalid-type.js",
-        "test/sea/test-single-executable-application-assets-nonexistent-file.js",
-        "test/sea/test-single-executable-application-assets-raw.js",
-        "test/sea/test-single-executable-application-assets.js",
-        "test/sea/test-single-executable-application-disable-experimental-sea-warning.js",
-        "test/sea/test-single-executable-application-empty.js",
-        "test/sea/test-single-executable-application-esm.js",
-        "test/sea/test-single-executable-application-exec-argv-empty.js",
-        "test/sea/test-single-executable-application-exec-argv-extension-cli.js",
-        "test/sea/test-single-executable-application-exec-argv-extension-env.js",
-        "test/sea/test-single-executable-application-exec-argv-extension-none.js",
-        "test/sea/test-single-executable-application-exec-argv.js",
-        "test/sea/test-single-executable-application-inspect-in-sea-flags.js",
-        "test/sea/test-single-executable-application-inspect.js",
-        "test/sea/test-single-executable-application-snapshot-and-code-cache.js",
-        "test/sea/test-single-executable-application-snapshot-worker.js",
-        "test/sea/test-single-executable-application-snapshot.js",
-        "test/sea/test-single-executable-application-use-code-cache.js",
-        "test/sea/test-single-executable-application.js",
-        "test/sea/test-single-executable-blob-config-errors.js",
-        "test/sea/test-single-executable-blob-config.js",
-        "test/sea/testcfg.py"
-      ]
-    },
-    {
-      "team": "@nodejs/url",
+      "owner": "@nodejs/url",
       "total": 58,
       "files": [
         "deps/ada/ada_c.h",
@@ -77513,7 +77542,7 @@
       ]
     },
     {
-      "team": "@nodejs/net",
+      "owner": "@nodejs/net",
       "total": 49,
       "files": [
         "doc/api/dgram.md",
@@ -77568,7 +77597,7 @@
       ]
     },
     {
-      "team": "@nodejs/startup",
+      "owner": "@nodejs/startup",
       "total": 45,
       "files": [
         "benchmark/misc/startup-cli-version.js",
@@ -77619,7 +77648,7 @@
       ]
     },
     {
-      "team": "@nodejs/actions",
+      "owner": "@nodejs/actions",
       "total": 42,
       "files": [
         ".github/workflows/auto-start-ci.yml",
@@ -77667,7 +77696,7 @@
       ]
     },
     {
-      "team": "@nodejs/sqlite",
+      "owner": "@nodejs/sqlite",
       "total": 36,
       "files": [
         "deps/sqlite/BUILD.gn",
@@ -77709,7 +77738,7 @@
       ]
     },
     {
-      "team": "@nodejs/tsc",
+      "owner": "@nodejs/tsc",
       "total": 31,
       "files": [
         ".github/CODEOWNERS",
@@ -77746,7 +77775,7 @@
       ]
     },
     {
-      "team": "@nodejs/streams",
+      "owner": "@nodejs/streams",
       "total": 23,
       "files": [
         "lib/internal/streams/add-abort-signal.js",
@@ -77775,7 +77804,7 @@
       ]
     },
     {
-      "team": "@nodejs/path",
+      "owner": "@nodejs/path",
       "total": 19,
       "files": [
         "lib/path.js",
@@ -77800,7 +77829,7 @@
       ]
     },
     {
-      "team": "@nodejs/performance",
+      "owner": "@nodejs/performance",
       "total": 16,
       "files": [
         "benchmark/_benchmark_progress.js",
@@ -77822,7 +77851,7 @@
       ]
     },
     {
-      "team": "@nodejs/v8-update",
+      "owner": "@nodejs/v8-update",
       "total": 14,
       "files": [
         ".github/workflows/update-v8.yml",
@@ -77842,7 +77871,7 @@
       ]
     },
     {
-      "team": "@nodejs/http",
+      "owner": "@nodejs/http",
       "total": 13,
       "files": [
         "doc/api/http.md",
@@ -77861,7 +77890,7 @@
       ]
     },
     {
-      "team": "@nodejs/loaders",
+      "owner": "@nodejs/loaders",
       "total": 13,
       "files": [
         "doc/api/esm.md",
@@ -77880,7 +77909,7 @@
       ]
     },
     {
-      "team": "@nodejs/http2",
+      "owner": "@nodejs/http2",
       "total": 12,
       "files": [
         "doc/api/http2.md",
@@ -77898,7 +77927,7 @@
       ]
     },
     {
-      "team": "@nodejs/node-api",
+      "owner": "@nodejs/node-api",
       "total": 11,
       "files": [
         "doc/api/n-api.md",
@@ -77915,7 +77944,7 @@
       ]
     },
     {
-      "team": "@nodejs/config",
+      "owner": "@nodejs/config",
       "total": 10,
       "files": [
         "doc/node-config-schema.json",
@@ -77931,7 +77960,7 @@
       ]
     },
     {
-      "team": "@nodejs/web-infra",
+      "owner": "@nodejs/web-infra",
       "total": 6,
       "files": [
         "tools/doc/deprecationCodes.mjs",
@@ -77943,7 +77972,7 @@
       ]
     },
     {
-      "team": "@nodejs/realm",
+      "owner": "@nodejs/realm",
       "total": 3,
       "files": [
         "src/node_realm-inl.h",
@@ -77952,7 +77981,7 @@
       ]
     },
     {
-      "team": "@nodejs/vm",
+      "owner": "@nodejs/vm",
       "total": 2,
       "files": [
         "src/module_wrap.cc",
@@ -77960,35 +77989,35 @@
       ]
     },
     {
-      "team": "@nodejs/build",
+      "owner": "@nodejs/build",
       "total": 1,
       "files": [
         "BUILDING.md"
       ]
     },
     {
-      "team": "@nodejs/devcontainer",
+      "owner": "@nodejs/devcontainer",
       "total": 1,
       "files": [
         "doc/contributing/using-devcontainer.md"
       ]
     },
     {
-      "team": "@nodejs/releasers",
+      "owner": "@nodejs/releasers",
       "total": 1,
       "files": [
         ".github/workflows/create-release-proposal.yml"
       ]
     },
     {
-      "team": "@nodejs/security-stewards",
+      "owner": "@nodejs/security-stewards",
       "total": 1,
       "files": [
         "doc/contributing/security-release-process.md"
       ]
     },
     {
-      "team": "@nodejs/userland-migrations",
+      "owner": "@nodejs/userland-migrations",
       "total": 1,
       "files": [
         "doc/api/deprecations.md"
@@ -77998,6 +78027,8 @@
   "codeownersValidationMeta": {
     "discoveryWarnings": [],
     "discoveryWarningCount": 0,
+    "oversizedCodeownersWarnings": [],
+    "oversizedCodeownersWarningCount": 0,
     "missingPathWarnings": [
       {
         "codeownersPath": ".github/CODEOWNERS",
@@ -78013,6 +78044,85 @@
       }
     ],
     "missingPathWarningCount": 1,
+    "invalidOwnerWarnings": [],
+    "invalidOwnerWarningCount": 0,
+    "ownerValidationWarnings": [],
+    "ownerValidationWarningCount": 0,
+    "missingDirectorySlashWarnings": [
+      {
+        "codeownersPath": ".github/CODEOWNERS",
+        "pattern": "/deps",
+        "suggestedPattern": "/deps/",
+        "owners": [
+          "@nodejs/security-wg"
+        ]
+      },
+      {
+        "codeownersPath": ".github/CODEOWNERS",
+        "pattern": "/deps/ada",
+        "suggestedPattern": "/deps/ada/",
+        "owners": [
+          "@nodejs/url"
+        ]
+      },
+      {
+        "codeownersPath": ".github/CODEOWNERS",
+        "pattern": "/deps/cares",
+        "suggestedPattern": "/deps/cares/",
+        "owners": [
+          "@nodejs/net"
+        ]
+      },
+      {
+        "codeownersPath": ".github/CODEOWNERS",
+        "pattern": "/deps/LIEF",
+        "suggestedPattern": "/deps/LIEF/",
+        "owners": [
+          "@nodejs/single-executable"
+        ]
+      },
+      {
+        "codeownersPath": ".github/CODEOWNERS",
+        "pattern": "/deps/postject",
+        "suggestedPattern": "/deps/postject/",
+        "owners": [
+          "@nodejs/single-executable"
+        ]
+      },
+      {
+        "codeownersPath": ".github/CODEOWNERS",
+        "pattern": "/test/fixtures/postject-copy",
+        "suggestedPattern": "/test/fixtures/postject-copy/",
+        "owners": [
+          "@nodejs/single-executable"
+        ]
+      },
+      {
+        "codeownersPath": ".github/CODEOWNERS",
+        "pattern": "/test/fixtures/wpt/url",
+        "suggestedPattern": "/test/fixtures/wpt/url/",
+        "owners": [
+          "@nodejs/url"
+        ]
+      },
+      {
+        "codeownersPath": ".github/CODEOWNERS",
+        "pattern": "/test/sea",
+        "suggestedPattern": "/test/sea/",
+        "owners": [
+          "@nodejs/single-executable"
+        ]
+      },
+      {
+        "codeownersPath": ".github/CODEOWNERS",
+        "pattern": "/tools/doc",
+        "suggestedPattern": "/tools/doc/",
+        "owners": [
+          "@nodejs/web-infra"
+        ]
+      }
+    ],
+    "missingDirectorySlashWarningCount": 9,
     "unprotectedDirectoryWarnings": [
       {
         "directory": "lib/test",
@@ -78041,14 +78151,24 @@
       const clamp = value => Math.max(0, Math.min(100, value))
       const scopeQueryParam = 'scope'
       const directoryRows = report.directories.filter(row => row.path !== '(root)')
-      const teamOwnershipRows = Array.isArray(report.teamOwnership) ? report.teamOwnership : []
+      const ownerIndexRows = Array.isArray(report.ownerIndex) ? report.ownerIndex : []
       const suggestionRows = Array.isArray(report.directoryTeamSuggestions) ? report.directoryTeamSuggestions : []
       const suggestionMeta = report.directoryTeamSuggestionsMeta || { enabled: false, warnings: [] }
       const codeownersValidationMeta = report.codeownersValidationMeta || {
         discoveryWarnings: [],
         discoveryWarningCount: 0,
+        oversizedCodeownersWarnings: [],
+        oversizedCodeownersWarningCount: 0,
         missingPathWarnings: [],
         missingPathWarningCount: 0,
+        invalidOwnerWarnings: [],
+        invalidOwnerWarningCount: 0,
+        ownerValidationWarnings: [],
+        ownerValidationWarningCount: 0,
+        missingDirectorySlashWarnings: [],
+        missingDirectorySlashWarningCount: 0,
+        unprotectedDirectoryWarnings: [],
+        unprotectedDirectoryWarningCount: 0,
       }
       const suggestionByPath = new Map(suggestionRows.map((row) => [row.path, row]))
       const directoryRowByPath = new Map()
@@ -78067,7 +78187,7 @@
       let selectedPath = readScopeFromLocation()
       let directoryController
       let unownedController
-      let teamController
+      let ownerController
 
       function setScope (nextPath, options) {
         const historyMode = options && options.historyMode ? options.historyMode : 'push'
@@ -78077,7 +78197,7 @@
 
         if (directoryController) directoryController.render()
         if (unownedController) unownedController.render()
-        if (teamController) teamController.render()
+        if (ownerController) ownerController.render()
 
         if (historyMode !== 'none') {
           if (historyMode === 'replace') {
@@ -78099,8 +78219,12 @@
       document.getElementById('coverage-unowned').style.width = clamp(100 - report.totals.coverage) + '%'
 
       renderCodeownersFiles(report.codeownersFiles)
+      renderOversizedCodeownersWarnings(codeownersValidationMeta)
       renderMissingPathWarnings(codeownersValidationMeta)
+      renderInvalidOwnerWarnings(codeownersValidationMeta)
+      renderOwnerValidationWarnings(codeownersValidationMeta)
       renderCodeownersDiscoveryWarnings(codeownersValidationMeta)
+      renderMissingDirectorySlashWarnings(codeownersValidationMeta)
       renderUnprotectedDirectoryWarnings(codeownersValidationMeta)
       directoryController = setupDirectoryTable(
         report.directories,
@@ -78111,7 +78235,7 @@
         getDirectScopeStats
       )
       unownedController = setupUnownedFiles(report.unownedFiles, () => selectedPath)
-      teamController = setupTeamOwnershipExplorer(teamOwnershipRows, () => selectedPath)
+      ownerController = setupOwnerIndexExplorer(ownerIndexRows, () => selectedPath)
       syncScopeToLocation(selectedPath, true)
 
       globalThis.addEventListener('popstate', () => {
@@ -78131,6 +78255,42 @@
           tr.children[1].textContent = fmt.format(row.rules)
           body.appendChild(tr)
         }
+      }
+
+      function renderOversizedCodeownersWarnings (validationMeta) {
+        const container = document.getElementById('oversized-codeowners-warnings')
+        const heading = document.getElementById('oversized-codeowners-warnings-heading')
+        const list = document.getElementById('oversized-codeowners-warnings-list')
+        const warningRows = Array.isArray(validationMeta && validationMeta.oversizedCodeownersWarnings)
+          ? validationMeta.oversizedCodeownersWarnings
+          : []
+
+        list.innerHTML = ''
+        if (warningRows.length === 0) {
+          container.hidden = true
+          return
+        }
+
+        const warningCount = Number(validationMeta && validationMeta.oversizedCodeownersWarningCount) || warningRows.length
+        heading.textContent = 'Oversized CODEOWNERS Files (' + fmt.format(warningCount) + ')'
+
+        for (const warning of warningRows) {
+          const item = document.createElement('li')
+          const pathSpan = document.createElement('span')
+          pathSpan.className = 'warning-path'
+          pathSpan.textContent = warning.codeownersPath
+          item.appendChild(pathSpan)
+
+          const textSpan = document.createElement('span')
+          textSpan.className = 'warning-text'
+          textSpan.textContent = ' is ignored because it is ' + formatByteCount(warning.sizeBytes) +
+            ' and exceeds GitHub\'s 3 MB limit (' + formatByteCount(warning.sizeLimitBytes) + ').'
+          item.appendChild(textSpan)
+
+          list.appendChild(item)
+        }
+
+        container.hidden = false
       }
 
       function renderMissingPathWarnings (validationMeta) {
@@ -78174,6 +78334,85 @@
         container.hidden = false
       }
 
+      function renderInvalidOwnerWarnings (validationMeta) {
+        const container = document.getElementById('invalid-owner-warnings')
+        const heading = document.getElementById('invalid-owner-warnings-heading')
+        const list = document.getElementById('invalid-owner-warnings-list')
+        const warningRows = Array.isArray(validationMeta && validationMeta.invalidOwnerWarnings)
+          ? validationMeta.invalidOwnerWarnings
+          : []
+
+        list.innerHTML = ''
+        if (warningRows.length === 0) {
+          container.hidden = true
+          return
+        }
+
+        const warningCount = Number(validationMeta && validationMeta.invalidOwnerWarningCount) || warningRows.length
+        heading.textContent = 'Invalid GitHub Owners (' + fmt.format(warningCount) + ')'
+
+        for (const warning of warningRows) {
+          const item = document.createElement('li')
+          const patternSpan = document.createElement('span')
+          patternSpan.className = 'warning-path'
+          patternSpan.textContent = warning.pattern
+          item.appendChild(patternSpan)
+
+          const ownerLabelSpan = document.createElement('span')
+          ownerLabelSpan.className = 'warning-text'
+          ownerLabelSpan.textContent = ' owners: '
+          item.appendChild(ownerLabelSpan)
+
+          const ownersSpan = document.createElement('span')
+          ownersSpan.className = 'warning-owners'
+          appendCodeownersOwnerList(ownersSpan, warning.owners)
+          item.appendChild(ownersSpan)
+
+          const invalidLabelSpan = document.createElement('span')
+          invalidLabelSpan.className = 'warning-text'
+          invalidLabelSpan.textContent = ' invalid: '
+          item.appendChild(invalidLabelSpan)
+
+          const invalidOwnersSpan = document.createElement('span')
+          invalidOwnersSpan.className = 'warning-owners'
+          appendInvalidOwnerList(invalidOwnersSpan, warning.invalidOwners)
+          item.appendChild(invalidOwnersSpan)
+
+          list.appendChild(item)
+        }
+
+        container.hidden = false
+      }
+
+      function renderOwnerValidationWarnings (validationMeta) {
+        const container = document.getElementById('owner-validation-warnings')
+        const heading = document.getElementById('owner-validation-warnings-heading')
+        const list = document.getElementById('owner-validation-warnings-list')
+        const warningRows = Array.isArray(validationMeta && validationMeta.ownerValidationWarnings)
+          ? validationMeta.ownerValidationWarnings
+          : []
+
+        list.innerHTML = ''
+        if (warningRows.length === 0) {
+          container.hidden = true
+          return
+        }
+
+        const warningCount = Number(validationMeta && validationMeta.ownerValidationWarningCount) || warningRows.length
+        heading.textContent = 'GitHub Owner Validation Warnings (' + fmt.format(warningCount) + ')'
+
+        for (const warning of warningRows) {
+          const item = document.createElement('li')
+          const textSpan = document.createElement('span')
+          textSpan.className = 'warning-text'
+          textSpan.textContent = warning
+          item.appendChild(textSpan)
+          list.appendChild(item)
+        }
+
+        container.hidden = false
+      }
+
       function appendMissingPathWarningHistory (target, warning) {
         const history = warning && typeof warning.history === 'object' ? warning.history : null
         if (!history || typeof history.addedAt !== 'string') {
@@ -78203,6 +78442,22 @@
             target.appendChild(document.createTextNode(', '))
           }
           target.appendChild(createCodeownersOwnerNode(owner))
+        })
+      }
+
+      function appendInvalidOwnerList (target, invalidOwners) {
+        target.textContent = ''
+        if (!Array.isArray(invalidOwners) || invalidOwners.length === 0) {
+          target.textContent = '(none)'
+          return
+        }
+
+        invalidOwners.forEach((entry, index) => {
+          if (index > 0) {
+            target.appendChild(document.createTextNode('; '))
+          }
+          target.appendChild(createCodeownersOwnerNode(entry.owner))
+          target.appendChild(document.createTextNode(' ' + entry.reason))
         })
       }
 
@@ -78292,6 +78547,10 @@
         return 'just now'
       }
 
+      function formatByteCount (value) {
+        return fmt.format(value) + ' bytes'
+      }
+
       function renderCodeownersDiscoveryWarnings (validationMeta) {
         const container = document.getElementById('codeowners-discovery-warnings')
         const heading = document.getElementById('codeowners-discovery-warnings-heading')
@@ -78336,6 +78595,56 @@
             textSpan.textContent = ' is in an unsupported location and is ignored by GitHub.'
             item.appendChild(textSpan)
           }
+
+          list.appendChild(item)
+        }
+
+        container.hidden = false
+      }
+
+      function renderMissingDirectorySlashWarnings (validationMeta) {
+        const container = document.getElementById('missing-directory-slash-warnings')
+        const heading = document.getElementById('missing-directory-slash-warnings-heading')
+        const list = document.getElementById('missing-directory-slash-warnings-list')
+        const warningRows = Array.isArray(validationMeta && validationMeta.missingDirectorySlashWarnings)
+          ? validationMeta.missingDirectorySlashWarnings
+          : []
+
+        list.innerHTML = ''
+        if (warningRows.length === 0) {
+          container.hidden = true
+          return
+        }
+
+        const warningCount = Number(validationMeta && validationMeta.missingDirectorySlashWarningCount) || warningRows.length
+        heading.textContent = 'Directory Entries Missing Trailing Slash (' + fmt.format(warningCount) + ')'
+
+        for (const warning of warningRows) {
+          const item = document.createElement('li')
+          const patternSpan = document.createElement('span')
+          patternSpan.className = 'warning-path'
+          patternSpan.textContent = warning.pattern
+          item.appendChild(patternSpan)
+
+          const textSpan = document.createElement('span')
+          textSpan.className = 'warning-text'
+          textSpan.textContent = ' should be written as '
+          item.appendChild(textSpan)
+
+          const suggestionSpan = document.createElement('span')
+          suggestionSpan.className = 'warning-reference'
+          suggestionSpan.textContent = warning.suggestedPattern
+          item.appendChild(suggestionSpan)
+
+          const ownerLabelSpan = document.createElement('span')
+          ownerLabelSpan.className = 'warning-text'
+          ownerLabelSpan.textContent = ' owners: '
+          item.appendChild(ownerLabelSpan)
+
+          const ownersSpan = document.createElement('span')
+          ownersSpan.className = 'warning-owners'
+          appendCodeownersOwnerList(ownersSpan, warning.owners)
+          item.appendChild(ownersSpan)
 
           list.appendChild(item)
         }
@@ -78625,26 +78934,26 @@
         return { render }
       }
 
-      function setupTeamOwnershipExplorer (rows, getScope) {
-        const teamSelect = document.getElementById('team-select')
-        const fileFilter = document.getElementById('team-file-filter')
-        const chipList = document.getElementById('team-chip-list')
-        const list = document.getElementById('team-file-list')
-        const count = document.getElementById('team-file-count')
-        const emptyState = document.getElementById('team-empty-state')
+      function setupOwnerIndexExplorer (rows, getScope) {
+        const ownerSelect = document.getElementById('owner-select')
+        const fileFilter = document.getElementById('owner-file-filter')
+        const chipList = document.getElementById('owner-chip-list')
+        const list = document.getElementById('owner-file-list')
+        const count = document.getElementById('owner-file-count')
+        const emptyState = document.getElementById('owner-empty-state')
         const safeRows = rows
-          .filter(row => row && typeof row.team === 'string' && Array.isArray(row.files))
+          .filter(row => row && typeof row.owner === 'string' && Array.isArray(row.files))
           .map((row) => ({
-            team: row.team,
+            owner: row.owner,
             total: Number(row.total) || row.files.length,
             files: row.files,
           }))
-        const rowByTeam = new Map(safeRows.map(row => [row.team, row]))
-        let selectedTeam = safeRows.length > 0 ? safeRows[0].team : ''
+        const rowByOwner = new Map(safeRows.map(row => [row.owner, row]))
+        let selectedOwner = safeRows.length > 0 ? safeRows[0].owner : ''
 
         if (safeRows.length === 0) {
-          emptyState.textContent = 'No @-prefixed owners found in resolved CODEOWNERS matches. Ownership entries appear when rules use @org/team or @username.'
-          teamSelect.disabled = true
+          emptyState.textContent = 'No resolved owners found in CODEOWNERS matches. Ownership entries appear when rules use @org/team, @username, or email owners.'
+          ownerSelect.disabled = true
           fileFilter.disabled = true
           chipList.innerHTML = ''
           list.textContent = '(none)'
@@ -78655,28 +78964,28 @@
         emptyState.hidden = true
         for (const row of safeRows) {
           const option = document.createElement('option')
-          option.value = row.team
-          option.textContent = row.team + ' \u2014 ' + fmt.format(row.total) + ' files'
-          teamSelect.appendChild(option)
+          option.value = row.owner
+          option.textContent = row.owner + ' \u2014 ' + fmt.format(row.total) + ' files'
+          ownerSelect.appendChild(option)
         }
 
-        const quickTeams = safeRows.slice(0, 12)
-        for (const row of quickTeams) {
+        const quickOwners = safeRows.slice(0, 12)
+        for (const row of quickOwners) {
           const chip = document.createElement('button')
           chip.type = 'button'
-          chip.className = 'team-chip'
-          chip.textContent = row.team + ' (' + fmt.format(row.total) + ')'
-          chip.setAttribute('data-team', row.team)
+          chip.className = 'owner-chip'
+          chip.textContent = row.owner + ' (' + fmt.format(row.total) + ')'
+          chip.setAttribute('data-owner', row.owner)
           chip.addEventListener('click', () => {
-            selectedTeam = row.team
-            teamSelect.value = selectedTeam
+            selectedOwner = row.owner
+            ownerSelect.value = selectedOwner
             render()
           })
           chipList.appendChild(chip)
         }
 
-        teamSelect.addEventListener('change', () => {
-          selectedTeam = teamSelect.value
+        ownerSelect.addEventListener('change', () => {
+          selectedOwner = ownerSelect.value
           render()
         })
         fileFilter.addEventListener('input', render)
@@ -78685,17 +78994,17 @@
         function render () {
           const scope = getScope()
           const query = fileFilter.value.trim().toLowerCase()
-          const selectedRow = rowByTeam.get(selectedTeam) || safeRows[0]
+          const selectedRow = rowByOwner.get(selectedOwner) || safeRows[0]
           if (!selectedRow) {
             list.textContent = '(none)'
             count.textContent = 'Showing 0 files.'
             return
           }
 
-          if (teamSelect.value !== selectedRow.team) {
-            teamSelect.value = selectedRow.team
+          if (ownerSelect.value !== selectedRow.owner) {
+            ownerSelect.value = selectedRow.owner
           }
-          selectedTeam = selectedRow.team
+          selectedOwner = selectedRow.owner
           const scopedFiles = scope
             ? selectedRow.files.filter(file => file === scope || file.startsWith(scope + '/'))
             : selectedRow.files
@@ -78705,12 +79014,12 @@
           const shown = filteredFiles.slice(0, 6000)
 
           list.textContent = shown.join('\n') || '(none)'
-          count.textContent = 'Owner: ' + selectedRow.team + ' — scope: ' + (scope || '(root)') +
+          count.textContent = 'Owner: ' + selectedRow.owner + ' — scope: ' + (scope || '(root)') +
             ' — showing ' + fmt.format(shown.length) + ' of ' + fmt.format(filteredFiles.length) + ' files.'
 
-          const chips = chipList.querySelectorAll('.team-chip')
+          const chips = chipList.querySelectorAll('.owner-chip')
           for (const chip of chips) {
-            const isActive = chip.getAttribute('data-team') === selectedRow.team
+            const isActive = chip.getAttribute('data-owner') === selectedRow.owner
             chip.classList.toggle('is-active', isActive)
           }
         }
