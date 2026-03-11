@@ -383,17 +383,17 @@ test('report skips GitHub-invalid bracket syntax rules instead of counting them 
   assert.deepEqual(team.files, ['src/owned.js'])
 })
 
-test('report treats escaped wildcard patterns as literal filename matches', (t) => {
+test('report treats escaped pattern characters as literal filename matches', (t) => {
   const repoDir = createRepo(t, {
     codeowners: [
-      '/src/literal\\*name.js @star-team',
-      '/src/file\\?.js @question-team',
+      '/src/literal\\ name.js @space-team',
+      '/src/with\\ two\\ spaces.js @multi-space-team',
     ].join('\n') + '\n',
     trackedFiles: {
-      'src/literal*name.js': 'module.exports = 3\n',
-      'src/literalXname.js': 'module.exports = 4\n',
-      'src/file?.js': 'module.exports = 5\n',
-      'src/fileA.js': 'module.exports = 6\n',
+      'src/literal name.js': 'module.exports = 3\n',
+      'src/literal-name.js': 'module.exports = 4\n',
+      'src/with two spaces.js': 'module.exports = 5\n',
+      'src/with-two-spaces.js': 'module.exports = 6\n',
     },
   })
 
@@ -404,18 +404,18 @@ test('report treats escaped wildcard patterns as literal filename matches', (t) 
   const html = readFileSync(outputPath, 'utf8')
   const reportData = parseReportDataFromHtml(html)
 
-  assert.ok(!reportData.unownedFiles.includes('src/literal*name.js'))
-  assert.ok(reportData.unownedFiles.includes('src/literalXname.js'))
-  assert.ok(!reportData.unownedFiles.includes('src/file?.js'))
-  assert.ok(reportData.unownedFiles.includes('src/fileA.js'))
+  assert.ok(!reportData.unownedFiles.includes('src/literal name.js'))
+  assert.ok(reportData.unownedFiles.includes('src/literal-name.js'))
+  assert.ok(!reportData.unownedFiles.includes('src/with two spaces.js'))
+  assert.ok(reportData.unownedFiles.includes('src/with-two-spaces.js'))
 
-  const starTeam = reportData.ownerIndex.find(row => row.owner === '@star-team')
-  assert.ok(starTeam, '@star-team should exist')
-  assert.deepEqual(starTeam.files, ['src/literal*name.js'])
+  const spaceTeam = reportData.ownerIndex.find(row => row.owner === '@space-team')
+  assert.ok(spaceTeam, '@space-team should exist')
+  assert.deepEqual(spaceTeam.files, ['src/literal name.js'])
 
-  const questionTeam = reportData.ownerIndex.find(row => row.owner === '@question-team')
-  assert.ok(questionTeam, '@question-team should exist')
-  assert.deepEqual(questionTeam.files, ['src/file?.js'])
+  const multiSpaceTeam = reportData.ownerIndex.find(row => row.owner === '@multi-space-team')
+  assert.ok(multiSpaceTeam, '@multi-space-team should exist')
+  assert.deepEqual(multiSpaceTeam.files, ['src/with two spaces.js'])
 })
 
 test('team suggestions map editors to repo teams for 0% covered directories', async (t) => {
