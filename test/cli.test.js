@@ -265,6 +265,35 @@ test('report includes ownership index for @org/team and @username owners', (t) =
   assert.deepEqual(alice.files, ['src/owned.js'])
 })
 
+test('report treats ownerless override rules as unowned coverage gaps', (t) => {
+  const repoDir = createRepo(t, {
+    codeowners: [
+      '/src/ @src-team',
+      '/apps/ @octocat',
+      '/apps/github',
+    ].join('\n') + '\n',
+    trackedFiles: {
+      'apps/owned.js': 'module.exports = 3\n',
+      'apps/github/cleared.js': 'module.exports = 4\n',
+    },
+  })
+
+  const result = runCli([], { cwd: repoDir })
+  assert.equal(result.status, 0, result.stderr)
+
+  const outputPath = parseOutputPathFromStdout(result.stdout)
+  const html = readFileSync(outputPath, 'utf8')
+  const reportData = parseReportDataFromHtml(html)
+
+  assert.ok(reportData.unownedFiles.includes('apps/github/cleared.js'))
+  assert.ok(!reportData.unownedFiles.includes('apps/owned.js'))
+
+  const octocat = reportData.teamOwnership.find(row => row.team === '@octocat')
+  assert.ok(octocat, 'owner index should retain the broader apps owner')
+  assert.ok(octocat.files.includes('apps/owned.js'))
+  assert.ok(!octocat.files.includes('apps/github/cleared.js'))
+})
+
 test('team suggestions map editors to repo teams for 0% covered directories', async (t) => {
   const repoDir = createRepo(t, {
     remoteUrl: 'git@github.com:test-org/test-repo.git',

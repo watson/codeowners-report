@@ -201,6 +201,7 @@ The report follows practical `CODEOWNERS` resolution behavior:
 
 - A file is considered **owned** if at least one owner is resolved.
 - Within a single `CODEOWNERS` file, the **last matching rule wins**.
+- A pattern line with no owners acts as an ownerless override only when it is the last matching rule for a path, matching GitHub's documented behavior.
 - GitHub only considers `CODEOWNERS` at `.github/CODEOWNERS`, `CODEOWNERS`, and `docs/CODEOWNERS`, using the first file found in that order.
 - Patterns are always resolved from the repository root, regardless of which supported `CODEOWNERS` location is active.
 - Extra `CODEOWNERS` files in supported locations and any `CODEOWNERS` files outside those locations are reported as ignored by GitHub.

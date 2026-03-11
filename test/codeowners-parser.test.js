@@ -30,8 +30,8 @@ test('parseCodeownersRuleLine: returns null for comment lines', () => {
   assert.equal(parseCodeownersRuleLine('  # indented comment'), null)
 })
 
-test('parseCodeownersRuleLine: returns null for pattern-only lines (no owners)', () => {
-  assert.equal(parseCodeownersRuleLine('/src/'), null)
+test('parseCodeownersRuleLine: preserves pattern-only lines as ownerless rules', () => {
+  assert.deepEqual(parseCodeownersRuleLine('/src/'), { pattern: '/src/', owners: [] })
 })
 
 test('parseCodeownersRuleLine: returns null for negation patterns', () => {
@@ -170,6 +170,13 @@ test('parseCodeowners: returns empty array for empty content', () => {
   assert.deepEqual(parseCodeowners('\n\n\n'), [])
 })
 
+test('parseCodeowners: preserves ownerless override rules', () => {
+  const rules = parseCodeowners('/apps/ @octocat\n/apps/github\n')
+  assert.equal(rules.length, 2)
+  assert.equal(rules[1].pattern, '/apps/github')
+  assert.deepEqual(rules[1].owners, [])
+})
+
 // --- findMatchingOwners ---
 
 test('findMatchingOwners: returns last matching rule owners', () => {
@@ -189,4 +196,10 @@ test('findMatchingOwners: returns first rule for catch-all pattern', () => {
   const rules = parseCodeowners('* @default-team')
   const owners = findMatchingOwners('any/file/path.txt', rules)
   assert.deepEqual(owners, ['@default-team'])
+})
+
+test('findMatchingOwners: ownerless later match clears inherited ownership', () => {
+  const rules = parseCodeowners('/apps/ @octocat\n/apps/github\n')
+  const owners = findMatchingOwners('apps/github/file.txt', rules)
+  assert.deepEqual(owners, [])
 })
