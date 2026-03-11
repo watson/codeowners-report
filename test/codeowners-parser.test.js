@@ -57,6 +57,14 @@ test('parseCodeownersRuleLine: handles escaped spaces in pattern', () => {
   assert.deepEqual(result, { pattern: 'path with spaces', owners: ['@owner'] })
 })
 
+test('parseCodeownersRuleLine: preserves escaped wildcard literals in normalized pattern text', () => {
+  const result = parseCodeownersRuleLine('/src/literal\\*name.js @team docs\\?owner@example.com')
+  assert.deepEqual(result, {
+    pattern: '/src/literal*name.js',
+    owners: ['@team', 'docs?owner@example.com'],
+  })
+})
+
 // --- createPatternMatcher ---
 
 test('createPatternMatcher: matches simple file extension', () => {
@@ -104,6 +112,24 @@ test('createPatternMatcher: question mark matches single non-slash character', (
   assert.ok(matches('fileA.js'))
   assert.ok(!matches('file.js'))
   assert.ok(!matches('file12.js'))
+})
+
+test('createPatternMatcher: escaped star is treated as a literal character', () => {
+  const matches = createPatternMatcher('/src/literal\\*name.js')
+  assert.ok(matches('src/literal*name.js'))
+  assert.ok(!matches('src/literalXname.js'))
+})
+
+test('createPatternMatcher: escaped question mark is treated as a literal character', () => {
+  const matches = createPatternMatcher('/src/file\\?.js')
+  assert.ok(matches('src/file?.js'))
+  assert.ok(!matches('src/fileA.js'))
+})
+
+test('createPatternMatcher: escaped spaces continue to match literal spaces', () => {
+  const matches = createPatternMatcher('path\\ with\\ spaces')
+  assert.ok(matches('path with spaces'))
+  assert.ok(!matches('pathXwithXspaces'))
 })
 
 test('createPatternMatcher: empty pattern after stripping slashes never matches', () => {
@@ -192,6 +218,20 @@ test('parseCodeowners: skips GitHub-invalid syntax lines', () => {
   assert.equal(rules.length, 1)
   assert.equal(rules[0].pattern, 'path with spaces')
   assert.deepEqual(rules[0].owners, ['@owner'])
+})
+
+test('parseCodeowners: escaped wildcard patterns match only literal characters', () => {
+  const rules = parseCodeowners([
+    '/src/literal\\*name.js @star-team',
+    '/src/file\\?.js @question-team',
+  ].join('\n'))
+
+  assert.equal(rules[0].pattern, '/src/literal*name.js')
+  assert.equal(rules[1].pattern, '/src/file?.js')
+  assert.deepEqual(findMatchingOwners('src/literal*name.js', rules), ['@star-team'])
+  assert.equal(findMatchingOwners('src/literalXname.js', rules), undefined)
+  assert.deepEqual(findMatchingOwners('src/file?.js', rules), ['@question-team'])
+  assert.equal(findMatchingOwners('src/fileA.js', rules), undefined)
 })
 
 // --- findMatchingOwners ---

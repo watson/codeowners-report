@@ -320,6 +320,41 @@ test('report skips GitHub-invalid bracket syntax rules instead of counting them 
   assert.deepEqual(team.files, ['src/owned.js'])
 })
 
+test('report treats escaped wildcard patterns as literal filename matches', (t) => {
+  const repoDir = createRepo(t, {
+    codeowners: [
+      '/src/literal\\*name.js @star-team',
+      '/src/file\\?.js @question-team',
+    ].join('\n') + '\n',
+    trackedFiles: {
+      'src/literal*name.js': 'module.exports = 3\n',
+      'src/literalXname.js': 'module.exports = 4\n',
+      'src/file?.js': 'module.exports = 5\n',
+      'src/fileA.js': 'module.exports = 6\n',
+    },
+  })
+
+  const result = runCli([], { cwd: repoDir })
+  assert.equal(result.status, 0, result.stderr)
+
+  const outputPath = parseOutputPathFromStdout(result.stdout)
+  const html = readFileSync(outputPath, 'utf8')
+  const reportData = parseReportDataFromHtml(html)
+
+  assert.ok(!reportData.unownedFiles.includes('src/literal*name.js'))
+  assert.ok(reportData.unownedFiles.includes('src/literalXname.js'))
+  assert.ok(!reportData.unownedFiles.includes('src/file?.js'))
+  assert.ok(reportData.unownedFiles.includes('src/fileA.js'))
+
+  const starTeam = reportData.teamOwnership.find(row => row.team === '@star-team')
+  assert.ok(starTeam, '@star-team should exist')
+  assert.deepEqual(starTeam.files, ['src/literal*name.js'])
+
+  const questionTeam = reportData.teamOwnership.find(row => row.team === '@question-team')
+  assert.ok(questionTeam, '@question-team should exist')
+  assert.deepEqual(questionTeam.files, ['src/file?.js'])
+})
+
 test('team suggestions map editors to repo teams for 0% covered directories', async (t) => {
   const repoDir = createRepo(t, {
     remoteUrl: 'git@github.com:test-org/test-repo.git',
