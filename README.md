@@ -87,6 +87,7 @@ In interactive mode, `--no-report` implies `--list-unowned` so output still stay
 | `--list-unowned` | Print unowned file paths to stdout |
 | `--fail-on-unowned` | Exit non-zero when one or more files are unowned |
 | `--fail-on-missing-paths` | Exit non-zero when one or more CODEOWNERS paths match no repository files |
+| `--fail-on-missing-directory-slashes` | Exit non-zero when directory CODEOWNERS paths do not follow the explicit trailing-slash style |
 | `--fail-on-location-warnings` | Exit non-zero when extra or ignored `CODEOWNERS` files are found |
 | `--fail-on-fragile-coverage` | Exit non-zero when directories have fragile file-by-file coverage |
 | `-g, --glob <pattern>` | Repeatable file filter for report/check scope (default: `**`) |
@@ -145,8 +146,8 @@ In non-interactive environments, `codeowners-audit` automatically:
 - exits `1` when unowned files exist (`--fail-on-unowned`)
 
 Exit code behavior:
-- Exit code `0`: all matched files are covered by `CODEOWNERS`.
-- Exit code `1`: one or more matched files are uncovered, `--fail-on-missing-paths` is enabled and one or more CODEOWNERS paths match no repository files, `--fail-on-location-warnings` is enabled and extra or ignored `CODEOWNERS` files are found, or `--fail-on-fragile-coverage` is enabled and directories rely on individual file rules instead of directory-level patterns.
+- Exit code `0`: all matched files are covered by `CODEOWNERS`, and no enabled validation policy failed.
+- Exit code `1`: at least one enforced policy failed. This includes uncovered files and any enabled `--fail-on-*` validation rule described in the [Options](#options) section.
 - Exit code `2`: runtime/setup error (for example: not in a Git repository, missing `CODEOWNERS`, invalid arguments).
 
 ### Common CI commands
@@ -204,6 +205,7 @@ The report follows practical `CODEOWNERS` resolution behavior:
 - Patterns are always resolved from the repository root, regardless of which supported `CODEOWNERS` location is active.
 - Extra `CODEOWNERS` files in supported locations and any `CODEOWNERS` files outside those locations are reported as ignored by GitHub.
 - Directory rules match descendant files whether they are written as `/path/to/dir` or `/path/to/dir/`.
+- Use `--fail-on-missing-directory-slashes` if you want CI to enforce the explicit `/path/to/dir/` form as a readability and consistency convention.
 - `CODEOWNERS` negation patterns (`!pattern`) are ignored.
 
 ## Requirements
@@ -225,6 +227,7 @@ The generated page includes:
 - active `CODEOWNERS` file and rule count
 - warnings for extra or unsupported `CODEOWNERS` files that GitHub will ignore
 - warnings for CODEOWNERS patterns that match no repository paths
+- warnings for slashless directory entries that do not follow the explicit trailing-slash style
 - warnings for directories with fragile coverage (owned through individual file rules only)
 
 The report is self-contained, so it can be opened directly from disk or shared after upload.

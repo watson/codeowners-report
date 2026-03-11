@@ -516,6 +516,11 @@
         <h3 id="codeowners-discovery-warnings-heading">CODEOWNERS Location Warnings</h3>
         <ul id="codeowners-discovery-warnings-list"></ul>
       </div>
+      <div id="missing-directory-slash-warnings" class="validation-warnings" hidden>
+        <h3 id="missing-directory-slash-warnings-heading">Directory Entries Missing Trailing Slash</h3>
+        <p class="warning-text" style="margin: 4px 0 0; font-size: 13px;">These rules currently work, but adding a trailing slash makes directory ownership explicit and avoids file-vs-directory ambiguity.</p>
+        <ul id="missing-directory-slash-warnings-list"></ul>
+      </div>
       <div id="unprotected-directory-warnings" class="validation-warnings" hidden>
         <h3 id="unprotected-directory-warnings-heading">Directories With Fragile Coverage</h3>
         <p class="warning-text" style="margin: 4px 0 0; font-size: 13px;">These directories show 100% coverage, but only through individual file rules. New files added here will lack code owners.</p>
@@ -549,6 +554,10 @@
         discoveryWarningCount: 0,
         missingPathWarnings: [],
         missingPathWarningCount: 0,
+        missingDirectorySlashWarnings: [],
+        missingDirectorySlashWarningCount: 0,
+        unprotectedDirectoryWarnings: [],
+        unprotectedDirectoryWarningCount: 0,
       }
       const suggestionByPath = new Map(suggestionRows.map((row) => [row.path, row]))
       const directoryRowByPath = new Map()
@@ -601,6 +610,7 @@
       renderCodeownersFiles(report.codeownersFiles)
       renderMissingPathWarnings(codeownersValidationMeta)
       renderCodeownersDiscoveryWarnings(codeownersValidationMeta)
+      renderMissingDirectorySlashWarnings(codeownersValidationMeta)
       renderUnprotectedDirectoryWarnings(codeownersValidationMeta)
       directoryController = setupDirectoryTable(
         report.directories,
@@ -836,6 +846,56 @@
             textSpan.textContent = ' is in an unsupported location and is ignored by GitHub.'
             item.appendChild(textSpan)
           }
+
+          list.appendChild(item)
+        }
+
+        container.hidden = false
+      }
+
+      function renderMissingDirectorySlashWarnings (validationMeta) {
+        const container = document.getElementById('missing-directory-slash-warnings')
+        const heading = document.getElementById('missing-directory-slash-warnings-heading')
+        const list = document.getElementById('missing-directory-slash-warnings-list')
+        const warningRows = Array.isArray(validationMeta && validationMeta.missingDirectorySlashWarnings)
+          ? validationMeta.missingDirectorySlashWarnings
+          : []
+
+        list.innerHTML = ''
+        if (warningRows.length === 0) {
+          container.hidden = true
+          return
+        }
+
+        const warningCount = Number(validationMeta && validationMeta.missingDirectorySlashWarningCount) || warningRows.length
+        heading.textContent = 'Directory Entries Missing Trailing Slash (' + fmt.format(warningCount) + ')'
+
+        for (const warning of warningRows) {
+          const item = document.createElement('li')
+          const patternSpan = document.createElement('span')
+          patternSpan.className = 'warning-path'
+          patternSpan.textContent = warning.pattern
+          item.appendChild(patternSpan)
+
+          const textSpan = document.createElement('span')
+          textSpan.className = 'warning-text'
+          textSpan.textContent = ' should be written as '
+          item.appendChild(textSpan)
+
+          const suggestionSpan = document.createElement('span')
+          suggestionSpan.className = 'warning-reference'
+          suggestionSpan.textContent = warning.suggestedPattern
+          item.appendChild(suggestionSpan)
+
+          const ownerLabelSpan = document.createElement('span')
+          ownerLabelSpan.className = 'warning-text'
+          ownerLabelSpan.textContent = ' owners: '
+          item.appendChild(ownerLabelSpan)
+
+          const ownersSpan = document.createElement('span')
+          ownersSpan.className = 'warning-owners'
+          appendCodeownersOwnerList(ownersSpan, warning.owners)
+          item.appendChild(ownersSpan)
 
           list.appendChild(item)
         }

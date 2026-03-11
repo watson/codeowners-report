@@ -7,6 +7,7 @@ import {
   formatCodeownersOwnersList,
   formatCodeownersDiscoveryWarningForCli,
   formatMissingPathWarningForCli,
+  formatMissingDirectorySlashWarningForCli,
   formatUnprotectedDirectoryWarningForCli,
 } from '../lib/cli-output.js'
 
@@ -149,6 +150,19 @@ test('formatMissingPathWarningForCli: formats pattern and owners', () => {
   const warning = { codeownersPath: '.github/CODEOWNERS', pattern: '/nonexistent/', owners: ['@team-a', '@team-b'] }
   const result = stripAnsi(formatMissingPathWarningForCli(warning, false))
   assert.ok(result.includes('/nonexistent/'))
+  assert.ok(result.includes('@team-a, @team-b'))
+})
+
+test('formatMissingDirectorySlashWarningForCli: formats suggestion and owners', () => {
+  const warning = {
+    codeownersPath: '.github/CODEOWNERS',
+    pattern: '/src',
+    suggestedPattern: '/src/',
+    owners: ['@team-a', '@team-b'],
+  }
+  const result = stripAnsi(formatMissingDirectorySlashWarningForCli(warning, false))
+  assert.ok(result.includes('/src'))
+  assert.ok(result.includes('/src/'))
   assert.ok(result.includes('@team-a, @team-b'))
 })
 

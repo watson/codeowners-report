@@ -18,6 +18,7 @@ test('parseArgs: returns defaults with no arguments', () => {
   assert.equal(result.listUnowned, false)
   assert.equal(result.failOnUnowned, false)
   assert.equal(result.failOnMissingPaths, false)
+  assert.equal(result.failOnMissingDirectorySlashes, false)
   assert.equal(result.failOnLocationWarnings, false)
   assert.equal(result.failOnFragileCoverage, false)
   assert.deepEqual(result.checkGlobs, ['**'])
@@ -63,6 +64,10 @@ test('parseArgs: --fail-on-unowned', () => {
 
 test('parseArgs: --fail-on-missing-paths', () => {
   assert.equal(parseArgs(['--fail-on-missing-paths']).failOnMissingPaths, true)
+})
+
+test('parseArgs: --fail-on-missing-directory-slashes', () => {
+  assert.equal(parseArgs(['--fail-on-missing-directory-slashes']).failOnMissingDirectorySlashes, true)
 })
 
 test('parseArgs: --fail-on-location-warnings', () => {

@@ -849,7 +849,7 @@ test('--no-report prints missing CODEOWNERS path warnings to stderr', (t) => {
   assert.match(plainStderr, /- \/does-not-exist\.js owners: @acme\/platform, @alice/)
   assert.match(
     plainStdout,
-    /Coverage summary:\nglobs: "\*\*"\ncodeowners file: CODEOWNERS\nanalyzed files: 3\nunknown files: 0\nmissing path warnings: 1\nlocation warnings: 0\nfragile coverage directories: /
+    /Coverage summary:\nglobs: "\*\*"\ncodeowners file: CODEOWNERS\nanalyzed files: 3\nunknown files: 0\nmissing path warnings: 1\nlocation warnings: 0\ndirectory slash warnings: 0\nfragile coverage directories: /
   )
 })
 
@@ -1021,6 +1021,93 @@ test('--fail-on-location-warnings passes when there are no CODEOWNERS location w
   const repoDir = createRepo(t)
 
   const result = runCli(['--fail-on-location-warnings'], { cwd: repoDir })
+
+  assert.equal(result.status, 0, result.stderr)
+})
+
+test('report includes missing directory slash warnings for slashless directory patterns', (t) => {
+  const repoDir = createRepo(t, {
+    codeowners: [
+      '/src @team',
+      '/docs/ @docs',
+      '/CODEOWNERS @team',
+    ].join('\n') + '\n',
+    trackedFiles: {
+      'docs/readme.md': '# docs\n',
+    },
+  })
+
+  const result = runCli(['--output', 'missing-directory-slashes.html'], { cwd: repoDir })
+
+  assert.equal(result.status, 0, result.stderr)
+  const html = readFileSync(path.join(repoDir, 'missing-directory-slashes.html'), 'utf8')
+  assert.match(html, /id="missing-directory-slash-warnings-heading">Directory Entries Missing Trailing Slash<\/h3>/)
+  const reportData = parseReportDataFromHtml(html)
+  assert.equal(reportData.codeownersValidationMeta.missingDirectorySlashWarningCount, 1)
+  assert.deepEqual(
+    reportData.codeownersValidationMeta.missingDirectorySlashWarnings.map((warning) => [
+      warning.pattern,
+      warning.suggestedPattern,
+    ]),
+    [['/src', '/src/']]
+  )
+})
+
+test('--no-report prints missing directory slash warnings to stderr', (t) => {
+  const repoDir = createRepo(t, {
+    codeowners: [
+      '/src @team',
+      '/CODEOWNERS @team',
+    ].join('\n') + '\n',
+  })
+
+  const result = runCli(['--no-report'], { cwd: repoDir })
+  const plainStderr = stripAnsi(result.stderr)
+  const plainStdout = stripAnsi(result.stdout)
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(plainStderr, /Directory CODEOWNERS paths missing trailing slash \(1\):/)
+  assert.match(plainStderr, /- \/src should end with "\/" as \/src\/ owners: @team/)
+  assert.match(plainStdout, /directory slash warnings: 1/)
+})
+
+test('--fail-on-missing-directory-slashes exits non-zero when slashless directory patterns exist', (t) => {
+  const repoDir = createRepo(t, {
+    codeowners: [
+      '/src @team',
+      '/CODEOWNERS @team',
+    ].join('\n') + '\n',
+  })
+
+  const result = runCli(['--fail-on-missing-directory-slashes'], { cwd: repoDir })
+
+  assert.equal(result.status, 1)
+  assert.match(result.stdout, /Report ready at/)
+})
+
+test('--fail-on-missing-directory-slashes is repository-wide and not scoped by --glob', (t) => {
+  const repoDir = createRepo(t, {
+    codeowners: [
+      '/src @team',
+      '/CODEOWNERS @team',
+    ].join('\n') + '\n',
+  })
+
+  const result = runCli(['--fail-on-missing-directory-slashes', '--glob', 'CODEOWNERS'], { cwd: repoDir })
+
+  assert.equal(result.status, 1)
+  assert.doesNotMatch(result.stdout, /Coverage summary:/)
+})
+
+test('--fail-on-missing-directory-slashes passes when directory patterns already end with slash', (t) => {
+  const repoDir = createRepo(t, {
+    codeowners: [
+      '/src/ @team',
+      '/CODEOWNERS @team',
+    ].join('\n') + '\n',
+  })
+
+  const result = runCli(['--fail-on-missing-directory-slashes'], { cwd: repoDir })
 
   assert.equal(result.status, 0, result.stderr)
 })
@@ -1444,6 +1531,7 @@ test('--help prints usage without failing', (t) => {
   assert.match(result.stdout, /--list-unowned/)
   assert.match(result.stdout, /--fail-on-unowned/)
   assert.match(result.stdout, /--fail-on-missing-paths/)
+  assert.match(result.stdout, /--fail-on-missing-directory-slashes/)
   assert.match(result.stdout, /--fail-on-location-warnings/)
   assert.match(result.stdout, /--fail-on-fragile-coverage/)
   assert.match(result.stdout, /--glob/)
